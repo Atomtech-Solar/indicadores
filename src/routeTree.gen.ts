@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PosCadastroRouteImport } from './routes/pos-cadastro'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ConfirmacaoRouteImport } from './routes/confirmacao'
 import { Route as CadastroRouteImport } from './routes/cadastro'
@@ -18,6 +19,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const PosCadastroRoute = PosCadastroRouteImport.update({
   id: '/pos-cadastro',
   path: '/pos-cadastro',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DashboardRoute = DashboardRouteImport.update({
@@ -46,6 +52,7 @@ export interface FileRoutesByFullPath {
   '/cadastro': typeof CadastroRoute
   '/confirmacao': typeof ConfirmacaoRoute
   '/dashboard': typeof DashboardRoute
+  '/login': typeof LoginRoute
   '/pos-cadastro': typeof PosCadastroRoute
 }
 export interface FileRoutesByTo {
@@ -53,6 +60,7 @@ export interface FileRoutesByTo {
   '/cadastro': typeof CadastroRoute
   '/confirmacao': typeof ConfirmacaoRoute
   '/dashboard': typeof DashboardRoute
+  '/login': typeof LoginRoute
   '/pos-cadastro': typeof PosCadastroRoute
 }
 export interface FileRoutesById {
@@ -61,19 +69,33 @@ export interface FileRoutesById {
   '/cadastro': typeof CadastroRoute
   '/confirmacao': typeof ConfirmacaoRoute
   '/dashboard': typeof DashboardRoute
+  '/login': typeof LoginRoute
   '/pos-cadastro': typeof PosCadastroRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/cadastro' | '/confirmacao' | '/dashboard' | '/pos-cadastro'
+  fullPaths:
+    | '/'
+    | '/cadastro'
+    | '/confirmacao'
+    | '/dashboard'
+    | '/login'
+    | '/pos-cadastro'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/cadastro' | '/confirmacao' | '/dashboard' | '/pos-cadastro'
+  to:
+    | '/'
+    | '/cadastro'
+    | '/confirmacao'
+    | '/dashboard'
+    | '/login'
+    | '/pos-cadastro'
   id:
     | '__root__'
     | '/'
     | '/cadastro'
     | '/confirmacao'
     | '/dashboard'
+    | '/login'
     | '/pos-cadastro'
   fileRoutesById: FileRoutesById
 }
@@ -82,6 +104,7 @@ export interface RootRouteChildren {
   CadastroRoute: typeof CadastroRoute
   ConfirmacaoRoute: typeof ConfirmacaoRoute
   DashboardRoute: typeof DashboardRoute
+  LoginRoute: typeof LoginRoute
   PosCadastroRoute: typeof PosCadastroRoute
 }
 
@@ -92,6 +115,13 @@ declare module '@tanstack/react-router' {
       path: '/pos-cadastro'
       fullPath: '/pos-cadastro'
       preLoaderRoute: typeof PosCadastroRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/dashboard': {
@@ -130,6 +160,7 @@ const rootRouteChildren: RootRouteChildren = {
   CadastroRoute: CadastroRoute,
   ConfirmacaoRoute: ConfirmacaoRoute,
   DashboardRoute: DashboardRoute,
+  LoginRoute: LoginRoute,
   PosCadastroRoute: PosCadastroRoute,
 }
 export const routeTree = rootRouteImport

@@ -1,4 +1,4 @@
-import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Sparkles, ArrowLeft, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
@@ -6,70 +6,50 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/lib/supabase/client";
-import { upsertUsuarioProfile } from "@/lib/usuario-profile";
 
-export const Route = createFileRoute("/cadastro")({
-  beforeLoad: async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (session) throw redirect({ to: "/pos-cadastro" });
-  },
+type LoginSearch = { redirect?: string };
+
+export const Route = createFileRoute("/login")({
+  validateSearch: (raw: Record<string, unknown>): LoginSearch => ({
+    redirect: typeof raw.redirect === "string" ? raw.redirect : undefined,
+  }),
   head: () => ({
     meta: [
-      { title: "Criar conta — IndicaPro" },
-      { name: "description", content: "Crie sua conta grátis em menos de 1 minuto." },
+      { title: "Entrar — IndicaPro" },
+      { name: "description", content: "Acesse sua conta para acompanhar indicações e comissões." },
     ],
   }),
-  component: Cadastro,
+  component: Login,
 });
 
-function Cadastro() {
+function Login() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ nome: "", email: "", whatsapp: "", senha: "" });
+  const { redirect } = Route.useSearch();
+  const [form, setForm] = useState({ email: "", senha: "" });
   const [loading, setLoading] = useState(false);
 
-  const afterSignup = async (nome: string, whatsapp: string) => {
-    try {
-      await upsertUsuarioProfile({ nome, whatsapp });
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Erro ao salvar perfil.";
-      toast.error(msg);
-      throw e;
-    }
-  };
-
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.nome || !form.whatsapp || !form.email || !form.senha) return;
-    if (form.senha.length < 6) {
-      toast.error("A senha deve ter pelo menos 6 caracteres.");
+  const goAfterLogin = () => {
+    if (redirect?.startsWith("/") && !redirect.startsWith("//")) {
+      window.location.assign(redirect);
       return;
     }
+    navigate({ to: "/dashboard" });
+  };
+
+  const signInPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.email || !form.senha) return;
     setLoading(true);
     try {
-      const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const { data, error } = await supabase.auth.signUp({
+      const { error } = await supabase.auth.signInWithPassword({
         email: form.email.trim(),
         password: form.senha,
-        options: {
-          emailRedirectTo: origin ? `${origin}/pos-cadastro` : undefined,
-          data: { nome: form.nome, whatsapp: form.whatsapp },
-        },
       });
       if (error) throw error;
-
-      if (data.session) {
-        await afterSignup(form.nome, form.whatsapp);
-        toast.success("Conta criada! Vamos à sua primeira indicação.");
-        navigate({ to: "/pos-cadastro" });
-      } else {
-        toast.message("Confirme seu e-mail", {
-          description: "Abra o link que enviamos para concluir o cadastro e acessar o app.",
-        });
-      }
+      toast.success("Login realizado.");
+      goAfterLogin();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Não foi possível criar a conta.";
+      const msg = err instanceof Error ? err.message : "Não foi possível entrar.";
       toast.error(msg);
     } finally {
       setLoading(false);
@@ -78,7 +58,7 @@ function Cadastro() {
 
   const magicLink = async () => {
     if (!form.email.trim()) {
-      toast.error("Informe o e-mail para receber o link.");
+      toast.error("Informe seu e-mail para receber o link.");
       return;
     }
     setLoading(true);
@@ -92,7 +72,7 @@ function Cadastro() {
         },
       });
       if (error) throw error;
-      toast.success("Verifique seu e-mail. Após entrar, complete nome e WhatsApp na próxima tela.");
+      toast.success("Verifique seu e-mail para o link de acesso.");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Não foi possível enviar o link.";
       toast.error(msg);
@@ -118,25 +98,12 @@ function Cadastro() {
             <div className="inline-flex h-12 w-12 rounded-2xl bg-gradient-primary items-center justify-center shadow-glow mb-4">
               <Sparkles className="h-6 w-6 text-primary-foreground" />
             </div>
-            <h1 className="text-3xl font-bold tracking-tight">Criar sua conta</h1>
-            <p className="text-sm text-muted-foreground mt-2">Leva menos de 1 minuto</p>
+            <h1 className="text-3xl font-bold tracking-tight">Entrar</h1>
+            <p className="text-sm text-muted-foreground mt-2">Use e-mail e senha ou magic link</p>
           </div>
 
           <div className="bg-card rounded-2xl shadow-card border border-border p-7">
-            <form onSubmit={(e) => void submit(e)} className="space-y-4">
-              <div>
-                <Label htmlFor="nome" className="text-sm font-medium">
-                  Nome
-                </Label>
-                <Input
-                  id="nome"
-                  required
-                  placeholder="Seu nome completo"
-                  value={form.nome}
-                  onChange={(e) => setForm({ ...form, nome: e.target.value })}
-                  className="mt-1.5 rounded-[10px] h-11"
-                />
-              </div>
+            <form onSubmit={signInPassword} className="space-y-4">
               <div>
                 <Label htmlFor="email" className="text-sm font-medium">
                   E-mail
@@ -153,28 +120,15 @@ function Cadastro() {
                 />
               </div>
               <div>
-                <Label htmlFor="whats" className="text-sm font-medium">
-                  WhatsApp
-                </Label>
-                <Input
-                  id="whats"
-                  required
-                  placeholder="(11) 99999-9999"
-                  value={form.whatsapp}
-                  onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
-                  className="mt-1.5 rounded-[10px] h-11"
-                />
-              </div>
-              <div>
                 <Label htmlFor="senha" className="text-sm font-medium">
                   Senha
                 </Label>
                 <Input
                   id="senha"
                   type="password"
-                  autoComplete="new-password"
+                  autoComplete="current-password"
                   required
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder="Sua senha"
                   value={form.senha}
                   onChange={(e) => setForm({ ...form, senha: e.target.value })}
                   className="mt-1.5 rounded-[10px] h-11"
@@ -186,7 +140,7 @@ function Cadastro() {
                 disabled={loading}
                 className="w-full rounded-xl h-12 text-base font-semibold mt-2"
               >
-                Criar conta grátis
+                Entrar
               </Button>
 
               <div className="relative my-4">
@@ -206,20 +160,16 @@ function Cadastro() {
                 className="w-full rounded-xl h-12 text-base font-medium bg-card"
               >
                 <MessageCircle className="h-5 w-5 mr-2 text-primary" />
-                Criar conta com magic link (só e-mail)
+                Receber magic link no e-mail
               </Button>
             </form>
           </div>
 
           <p className="text-sm text-center text-muted-foreground mt-6">
-            Já tem conta?{" "}
-            <Link to="/login" className="text-primary font-semibold hover:underline">
-              Entrar
+            Não tem conta?{" "}
+            <Link to="/cadastro" className="text-primary font-semibold hover:underline">
+              Criar grátis
             </Link>
-          </p>
-
-          <p className="text-xs text-center text-muted-foreground mt-4">
-            Ao criar sua conta você concorda com nossos termos.
           </p>
         </div>
       </div>

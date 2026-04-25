@@ -1,8 +1,30 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Clock, Wallet, ArrowRight, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/lib/supabase/client";
+import { dbStatusToUi } from "@/lib/indicacao-domain";
+import { formatBRL } from "@/lib/format";
+
+type ConfirmacaoSearch = { indicacaoId?: number };
 
 export const Route = createFileRoute("/confirmacao")({
+  validateSearch: (raw: Record<string, unknown>): ConfirmacaoSearch => {
+    const id = raw.indicacaoId;
+    const n = typeof id === "number" ? id : typeof id === "string" ? Number(id) : NaN;
+    return { indicacaoId: Number.isFinite(n) && n > 0 ? n : undefined };
+  },
+  beforeLoad: async ({ location }) => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) {
+      throw redirect({
+        to: "/login",
+        search: { redirect: `${location.pathname}${location.searchStr}` },
+      });
+    }
+  },
   head: () => ({
     meta: [{ title: "Indicação enviada — IndicaPro" }],
   }),
@@ -10,6 +32,25 @@ export const Route = createFileRoute("/confirmacao")({
 });
 
 function Confirmacao() {
+  const { indicacaoId } = Route.useSearch();
+
+  const { data: row, isLoading } = useQuery({
+    queryKey: ["indicacao", indicacaoId],
+    enabled: indicacaoId != null,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("indicacoes")
+        .select("id, nome_indicado, status, valor_potencial")
+        .eq("id", indicacaoId as number)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const statusLabel = row ? dbStatusToUi(row.status) : "Em análise";
+  const potencial = row?.valor_potencial ?? 1500;
+
   return (
     <div className="min-h-screen bg-background grid place-items-center px-6 py-12">
       <div className="w-full max-w-lg text-center">
@@ -20,12 +61,14 @@ function Confirmacao() {
           </div>
         </div>
 
-        <h1 className="text-3xl md:text-4xl font-bold mt-7 tracking-tight">
-          Indicação enviada com sucesso
-        </h1>
+        <h1 className="text-3xl md:text-4xl font-bold mt-7 tracking-tight">Indicação enviada com sucesso</h1>
         <p className="text-muted-foreground mt-3 text-base">
           Nossa equipe entrará em contato em até <strong className="text-foreground">24 horas</strong>.
         </p>
+
+        {isLoading && indicacaoId != null && (
+          <p className="text-sm text-muted-foreground mt-4">Carregando detalhes…</p>
+        )}
 
         <div className="grid sm:grid-cols-2 gap-4 mt-10">
           <div className="rounded-2xl bg-card border border-border shadow-card p-6 text-left">
@@ -33,14 +76,14 @@ function Confirmacao() {
               <Clock className="h-5 w-5 text-warning-foreground" />
             </div>
             <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Status</p>
-            <p className="text-lg font-semibold mt-1">Em análise</p>
+            <p className="text-lg font-semibold mt-1">{statusLabel}</p>
           </div>
           <div className="rounded-2xl bg-primary-light border border-primary shadow-card p-6 text-left">
             <div className="h-10 w-10 rounded-xl bg-primary grid place-items-center mb-3">
               <Wallet className="h-5 w-5 text-primary-foreground" />
             </div>
-            <p className="text-xs text-primary-dark font-semibold uppercase tracking-wide">Você pode ganhar</p>
-            <p className="text-2xl font-bold text-primary-dark mt-1">até R$ 1.500</p>
+            <p className="text-xs text-primary-dark font-semibold uppercase tracking-wide">Potencial</p>
+            <p className="text-2xl font-bold text-primary-dark mt-1">até {formatBRL(Number(potencial))}</p>
           </div>
         </div>
 

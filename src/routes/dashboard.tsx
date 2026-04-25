@@ -1,5 +1,6 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   Users,
@@ -15,12 +16,38 @@ import {
   Send,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAppStore, formatBRL, formatDate, type IndicacaoStatus, type IndicacaoTipo } from "@/lib/store";
+import { supabase } from "@/lib/supabase/client";
+import {
+  dbStatusToUi,
+  mapTipoToDb,
+  mapTipoDbToUi,
+  type IndicacaoTipo,
+  type UiIndicacaoStatus,
+} from "@/lib/indicacao-domain";
+import { formatBRL, formatDate } from "@/lib/format";
+import { fetchUsuarioRow } from "@/lib/usuario-profile";
+import type { Tables } from "@/lib/supabase/database.types";
 
 export const Route = createFileRoute("/dashboard")({
+  beforeLoad: async ({ location }) => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) {
+      throw redirect({
+        to: "/login",
+        search: { redirect: `${location.pathname}${location.searchStr}` },
+      });
+    }
+    const { data: perfil } = await supabase.from("usuarios").select("id").maybeSingle();
+    if (!perfil) {
+      throw redirect({ to: "/pos-cadastro" });
+    }
+  },
   head: () => ({ meta: [{ title: "Dashboard — IndicaPro" }] }),
   component: Dashboard,
 });
@@ -34,31 +61,89 @@ const navItems = [
   { label: "Perfil", icon: User },
 ];
 
+function monthKey(iso: string) {
+  return iso.slice(0, 7);
+}
+
+function last6MonthLabels() {
+  const out: { key: string; label: string }[] = [];
+  const now = new Date();
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const label = d.toLocaleDateString("pt-BR", { month: "short" });
+    out.push({ key, label: label.replace(".", "") });
+  }
+  return out;
+}
+
 function Dashboard() {
-  const usuario = useAppStore((s) => s.usuario);
-  const indicacoes = useAppStore((s) => s.indicacoes);
-  const ganhos = useAppStore((s) => s.ganhos);
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
 
-  const nome = usuario?.nome?.split(" ")[0] ?? "João";
+  const { data: profile } = useQuery({
+    queryKey: ["usuario"],
+    queryFn: fetchUsuarioRow,
+  });
+
+  const { data: indicacoes = [], isLoading: loadingInd } = useQuery({
+    queryKey: ["indicacoes"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("indicacoes")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Tables<"indicacoes">[];
+    },
+  });
+
+  const { data: comissoes = [], isLoading: loadingCom } = useQuery({
+    queryKey: ["comissoes"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("comissoes")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Tables<"comissoes">[];
+    },
+  });
+
+  const nome = profile?.nome?.split(" ")[0] ?? "Parceiro";
+
+  const now = new Date();
+  const currentMonthPrefix = monthKey(now.toISOString());
 
   const stats = useMemo(() => {
-    const totalGanho = ganhos.reduce((s, g) => s + g.valor, 0);
-    const mes = ganhos
-      .filter((g) => g.data.startsWith("2025-04"))
-      .reduce((s, g) => s + g.valor, 0);
+    const pagas = comissoes.filter((c) => c.status === "pago");
+    const totalGanho = pagas.reduce((s, g) => s + Number(g.valor), 0);
+    const mes = pagas
+      .filter((g) => monthKey(g.created_at) === currentMonthPrefix)
+      .reduce((s, g) => s + Number(g.valor), 0);
     const andamento = indicacoes
-      .filter((i) => i.status === "Em análise" || i.status === "Em negociação")
-      .reduce((s, i) => s + i.valorPotencial, 0);
-    return { totalGanho, mes, andamento, disponivel: 1200 };
-  }, [ganhos, indicacoes]);
+      .filter((i) => ["enviado", "analise", "negociacao"].includes(i.status))
+      .reduce((s, i) => s + Number(i.valor_potencial), 0);
+    const disponivel = comissoes
+      .filter((c) => c.status === "disponivel")
+      .reduce((s, c) => s + Number(c.valor), 0);
+    return { totalGanho, mes, andamento, disponivel };
+  }, [comissoes, indicacoes, currentMonthPrefix]);
+
+  const potencialAberto = useMemo(
+    () =>
+      indicacoes
+        .filter((i) => !["fechado", "perdido"].includes(i.status))
+        .reduce((s, i) => s + Number(i.valor_potencial), 0),
+    [indicacoes],
+  );
 
   const funil = useMemo(() => {
     const total = indicacoes.length;
-    const analise = indicacoes.filter((i) => i.status === "Em análise").length;
-    const negociacao = indicacoes.filter((i) => i.status === "Em negociação").length;
-    const fechados = indicacoes.filter((i) => i.status === "Fechado").length;
+    const analise = indicacoes.filter((i) => ["enviado", "analise"].includes(i.status)).length;
+    const negociacao = indicacoes.filter((i) => i.status === "negociacao").length;
+    const fechados = indicacoes.filter((i) => i.status === "fechado").length;
     return [
       { label: "Indicações", value: total, color: "bg-muted-foreground/20", text: "text-foreground" },
       { label: "Em análise", value: analise, color: "bg-warning/30", text: "text-warning-foreground" },
@@ -67,9 +152,22 @@ function Dashboard() {
     ];
   }, [indicacoes]);
 
+  const chartData = useMemo(() => {
+    const months = last6MonthLabels();
+    const byMonth: Record<string, number> = {};
+    for (const m of months) byMonth[m.key] = 0;
+    for (const c of comissoes) {
+      if (c.status !== "pago") continue;
+      const k = monthKey(c.created_at);
+      if (k in byMonth) byMonth[k] += Number(c.valor);
+    }
+    return months.map((m) => ({ m: m.label, v: byMonth[m.key] ?? 0 }));
+  }, [comissoes]);
+
+  const loading = loadingInd || loadingCom;
+
   return (
     <div className="min-h-screen flex bg-background">
-      {/* Sidebar */}
       <aside className="hidden lg:flex w-64 shrink-0 flex-col bg-sidebar border-r border-sidebar-border sticky top-0 h-screen">
         <div className="px-6 py-5 border-b border-sidebar-border">
           <Link to="/" className="flex items-center gap-2">
@@ -83,6 +181,7 @@ function Dashboard() {
           {navItems.map((item) => (
             <button
               key={item.label}
+              type="button"
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition ${
                 item.active
                   ? "bg-sidebar-accent text-sidebar-accent-foreground"
@@ -97,28 +196,25 @@ function Dashboard() {
         <div className="p-4 border-t border-sidebar-border">
           <div className="rounded-xl bg-gradient-success p-4">
             <p className="text-xs font-semibold text-primary-dark">Potencial em aberto</p>
-            <p className="text-xl font-bold text-primary-dark mt-1">R$ 8.500</p>
-            <Button
-              size="sm"
-              onClick={() => setShowModal(true)}
-              className="w-full mt-3 rounded-lg h-9"
-            >
+            <p className="text-xl font-bold text-primary-dark mt-1">{formatBRL(potencialAberto)}</p>
+            <Button size="sm" onClick={() => setShowModal(true)} className="w-full mt-3 rounded-lg h-9">
               Nova indicação
             </Button>
           </div>
         </div>
       </aside>
 
-      {/* Conteúdo */}
       <main className="flex-1 min-w-0">
-        {/* Header */}
         <header className="bg-card border-b border-border px-6 lg:px-10 py-4 flex items-center justify-between sticky top-0 z-20">
           <div>
             <p className="text-xs text-muted-foreground">Bem-vindo de volta</p>
-            <h1 className="text-lg font-semibold">Olá, {nome} 👋</h1>
+            <h1 className="text-lg font-semibold">Olá, {nome}</h1>
           </div>
           <div className="flex items-center gap-3">
-            <button className="relative h-10 w-10 rounded-xl border border-border hover:bg-muted grid place-items-center transition">
+            <button
+              type="button"
+              className="relative h-10 w-10 rounded-xl border border-border hover:bg-muted grid place-items-center transition"
+            >
               <Bell className="h-[18px] w-[18px] text-muted-foreground" />
               <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary" />
             </button>
@@ -129,15 +225,38 @@ function Dashboard() {
         </header>
 
         <div className="px-6 lg:px-10 py-8 space-y-7 max-w-[1400px]">
-          {/* Cards de stats */}
+          {loading && (
+            <p className="text-sm text-muted-foreground">Atualizando seus dados…</p>
+          )}
+
           <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-5">
-            <StatCard label="Total ganho" value={formatBRL(stats.totalGanho)} tone="primary" trend="+18% vs mês anterior" />
-            <StatCard label="Este mês" value={formatBRL(stats.mes)} tone="primary" trend="+R$ 750 esta semana" />
-            <StatCard label="Em andamento" value={formatBRL(stats.andamento)} tone="warning" trend="6 negociações ativas" />
-            <StatCard label="Disponível para saque" value={formatBRL(stats.disponivel)} tone="primary" trend="Saque imediato via Pix" cta />
+            <StatCard
+              label="Total ganho"
+              value={formatBRL(stats.totalGanho)}
+              tone="primary"
+              trend="Comissões pagas"
+            />
+            <StatCard
+              label="Este mês"
+              value={formatBRL(stats.mes)}
+              tone="primary"
+              trend={now.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
+            />
+            <StatCard
+              label="Em andamento"
+              value={formatBRL(stats.andamento)}
+              tone="warning"
+              trend="Potencial em pipeline"
+            />
+            <StatCard
+              label="Disponível para saque"
+              value={formatBRL(stats.disponivel)}
+              tone="primary"
+              trend="Saque via processo interno"
+              cta
+            />
           </div>
 
-          {/* CTA Nova Indicação */}
           <div className="rounded-2xl bg-gradient-primary p-6 lg:p-7 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-glow">
             <div>
               <h3 className="text-xl md:text-2xl font-bold text-primary-foreground">
@@ -158,7 +277,6 @@ function Dashboard() {
             </Button>
           </div>
 
-          {/* Funil */}
           <Section title="Funil de indicações" subtitle="Acompanhe o progresso de cada lead">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {funil.map((f, i) => (
@@ -175,7 +293,6 @@ function Dashboard() {
             </div>
           </Section>
 
-          {/* Grid: tabela + ganhos */}
           <div className="grid lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2">
               <Section title="Indicações recentes" subtitle="Suas últimas 8 indicações">
@@ -195,17 +312,21 @@ function Dashboard() {
                           <td className="py-3.5">
                             <div className="flex items-center gap-3">
                               <div className="h-8 w-8 rounded-lg bg-muted grid place-items-center text-xs font-semibold text-muted-foreground">
-                                {i.nome.slice(0, 1)}
+                                {i.nome_indicado.slice(0, 1)}
                               </div>
                               <div>
-                                <p className="font-medium">{i.nome}</p>
-                                <p className="text-xs text-muted-foreground">{i.tipo}</p>
+                                <p className="font-medium">{i.nome_indicado}</p>
+                                <p className="text-xs text-muted-foreground">{mapTipoDbToUi(i.tipo)}</p>
                               </div>
                             </div>
                           </td>
-                          <td className="py-3.5"><StatusBadge status={i.status} /></td>
-                          <td className="py-3.5 font-semibold text-primary">{formatBRL(i.valorPotencial)}</td>
-                          <td className="py-3.5 text-muted-foreground">{formatDate(i.data)}</td>
+                          <td className="py-3.5">
+                            <StatusBadge status={dbStatusToUi(i.status)} />
+                          </td>
+                          <td className="py-3.5 font-semibold text-primary">
+                            {formatBRL(Number(i.valor_potencial))}
+                          </td>
+                          <td className="py-3.5 text-muted-foreground">{formatDate(i.created_at)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -215,32 +336,46 @@ function Dashboard() {
             </div>
 
             <div>
-              <Section title="Últimos ganhos" subtitle="Comissões recebidas">
+              <Section title="Últimos ganhos" subtitle="Comissões pagas">
                 <ul className="space-y-3">
-                  {ganhos.map((g) => (
-                    <li key={g.id} className="flex items-center justify-between p-3 rounded-xl bg-muted/40 hover:bg-muted transition">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="h-9 w-9 shrink-0 rounded-xl bg-primary-light grid place-items-center">
-                          <Wallet className="h-4 w-4 text-primary-dark" />
+                  {comissoes
+                    .filter((c) => c.status === "pago")
+                    .slice(0, 8)
+                    .map((c) => (
+                      <li
+                        key={c.id}
+                        className="flex items-center justify-between p-3 rounded-xl bg-muted/40 hover:bg-muted transition"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="h-9 w-9 shrink-0 rounded-xl bg-primary-light grid place-items-center">
+                            <Wallet className="h-4 w-4 text-primary-dark" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate">Comissão #{c.indicacao_id}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Pago · {formatDate(c.created_at)}
+                            </p>
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium truncate">{g.nomeIndicado}</p>
-                          <p className="text-xs text-muted-foreground">Comissão recebida · {formatDate(g.data)}</p>
-                        </div>
-                      </div>
-                      <span className="text-sm font-bold text-primary shrink-0">+ {formatBRL(g.valor)}</span>
+                        <span className="text-sm font-bold text-primary shrink-0">
+                          + {formatBRL(Number(c.valor))}
+                        </span>
+                      </li>
+                    ))}
+                  {comissoes.filter((c) => c.status === "pago").length === 0 && (
+                    <li className="text-sm text-muted-foreground py-4 text-center">
+                      Nenhuma comissão paga ainda.
                     </li>
-                  ))}
+                  )}
                 </ul>
               </Section>
             </div>
           </div>
 
-          {/* Gráfico simples + Potencial */}
           <div className="grid lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2">
-              <Section title="Crescimento mensal" subtitle="Comissões nos últimos 6 meses">
-                <SimpleLineChart />
+              <Section title="Crescimento mensal" subtitle="Comissões pagas nos últimos 6 meses">
+                <SimpleLineChart data={chartData} />
               </Section>
             </div>
             <div>
@@ -250,7 +385,9 @@ function Dashboard() {
                 </div>
                 <div>
                   <p className="text-primary-foreground/80 text-sm">Você pode ganhar até</p>
-                  <p className="text-4xl md:text-5xl font-bold text-primary-foreground mt-1">R$ 8.500</p>
+                  <p className="text-4xl md:text-5xl font-bold text-primary-foreground mt-1">
+                    {formatBRL(potencialAberto)}
+                  </p>
                   <p className="text-primary-foreground/80 text-xs mt-2">com indicações já em andamento</p>
                 </div>
                 <Button
@@ -269,10 +406,11 @@ function Dashboard() {
       {showModal && (
         <NovaIndicacaoModal
           onClose={() => setShowModal(false)}
-          onSent={() => {
+          onSent={(id) => {
             setShowModal(false);
-            navigate({ to: "/confirmacao" });
+            navigate({ to: "/confirmacao", search: { indicacaoId: id } });
           }}
+          queryClient={queryClient}
         />
       )}
     </div>
@@ -280,9 +418,17 @@ function Dashboard() {
 }
 
 function StatCard({
-  label, value, tone, trend, cta,
+  label,
+  value,
+  tone,
+  trend,
+  cta,
 }: {
-  label: string; value: string; tone: "primary" | "warning"; trend: string; cta?: boolean;
+  label: string;
+  value: string;
+  tone: "primary" | "warning";
+  trend: string;
+  cta?: boolean;
 }) {
   const valueColor = tone === "primary" ? "text-primary" : "text-warning-foreground";
   return (
@@ -291,8 +437,8 @@ function StatCard({
       <p className={`text-3xl font-bold mt-2 ${valueColor}`}>{value}</p>
       <p className="text-xs text-muted-foreground mt-2">{trend}</p>
       {cta && (
-        <button className="mt-3 text-xs font-semibold text-primary hover:underline">
-          Sacar agora →
+        <button type="button" className="mt-3 text-xs font-semibold text-primary hover:underline">
+          Solicitar saque →
         </button>
       )}
     </div>
@@ -311,12 +457,12 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
   );
 }
 
-function StatusBadge({ status }: { status: IndicacaoStatus }) {
-  const map: Record<IndicacaoStatus, string> = {
+function StatusBadge({ status }: { status: UiIndicacaoStatus }) {
+  const map: Record<UiIndicacaoStatus, string> = {
     "Em análise": "bg-warning/25 text-warning-foreground",
     "Em negociação": "bg-primary/15 text-primary-dark",
-    "Fechado": "bg-primary text-primary-foreground",
-    "Perdido": "bg-muted text-muted-foreground",
+    Fechado: "bg-primary text-primary-foreground",
+    Perdido: "bg-muted text-muted-foreground",
   };
   return (
     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${map[status]}`}>
@@ -325,27 +471,22 @@ function StatusBadge({ status }: { status: IndicacaoStatus }) {
   );
 }
 
-function SimpleLineChart() {
-  const data = [
-    { m: "Nov", v: 1200 },
-    { m: "Dez", v: 1800 },
-    { m: "Jan", v: 1500 },
-    { m: "Fev", v: 2400 },
-    { m: "Mar", v: 2200 },
-    { m: "Abr", v: 3200 },
-  ];
-  const max = Math.max(...data.map((d) => d.v));
+function SimpleLineChart({ data }: { data: { m: string; v: number }[] }) {
+  const max = Math.max(1, ...data.map((d) => d.v));
   const w = 600;
   const h = 180;
   const pad = 24;
-  const stepX = (w - pad * 2) / (data.length - 1);
+  const stepX = (w - pad * 2) / Math.max(1, data.length - 1);
   const points = data.map((d, i) => {
     const x = pad + i * stepX;
-    const y = h - pad - ((d.v / max) * (h - pad * 2));
+    const y = h - pad - (d.v / max) * (h - pad * 2);
     return [x, y] as const;
   });
   const path = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0]} ${p[1]}`).join(" ");
-  const area = `${path} L ${points[points.length - 1][0]} ${h - pad} L ${points[0][0]} ${h - pad} Z`;
+  const area =
+    points.length > 0
+      ? `${path} L ${points[points.length - 1][0]} ${h - pad} L ${points[0][0]} ${h - pad} Z`
+      : "";
 
   return (
     <div className="w-full">
@@ -356,30 +497,75 @@ function SimpleLineChart() {
             <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
           </linearGradient>
         </defs>
-        <path d={area} fill="url(#gradArea)" />
-        <path d={path} fill="none" stroke="var(--primary)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-        {points.map((p, i) => (
-          <g key={i}>
-            <circle cx={p[0]} cy={p[1]} r={4} fill="var(--card)" stroke="var(--primary)" strokeWidth={2} />
-            <text x={p[0]} y={h - 6} textAnchor="middle" fontSize="10" fill="var(--muted-foreground)">
-              {data[i].m}
-            </text>
-          </g>
-        ))}
+        {points.length > 0 && (
+          <>
+            <path d={area} fill="url(#gradArea)" />
+            <path
+              d={path}
+              fill="none"
+              stroke="var(--primary)"
+              strokeWidth={2.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {points.map((p, i) => (
+              <g key={i}>
+                <circle cx={p[0]} cy={p[1]} r={4} fill="var(--card)" stroke="var(--primary)" strokeWidth={2} />
+                <text x={p[0]} y={h - 6} textAnchor="middle" fontSize="10" fill="var(--muted-foreground)">
+                  {data[i].m}
+                </text>
+              </g>
+            ))}
+          </>
+        )}
       </svg>
     </div>
   );
 }
 
-function NovaIndicacaoModal({ onClose, onSent }: { onClose: () => void; onSent: () => void }) {
-  const addIndicacao = useAppStore((s) => s.addIndicacao);
+function NovaIndicacaoModal({
+  onClose,
+  onSent,
+  queryClient,
+}: {
+  onClose: () => void;
+  onSent: (id: number) => void;
+  queryClient: ReturnType<typeof useQueryClient>;
+}) {
   const [form, setForm] = useState({ nome: "", whatsapp: "", tipo: "Pessoa" as IndicacaoTipo });
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const { data: uid, error: rpcErr } = await supabase.rpc("get_my_usuario_id");
+      if (rpcErr) throw rpcErr;
+      if (uid == null) throw new Error("Complete seu perfil antes de indicar.");
+
+      const { data, error } = await supabase
+        .from("indicacoes")
+        .insert({
+          usuario_id: uid,
+          nome_indicado: form.nome.trim(),
+          whatsapp: form.whatsapp.trim(),
+          tipo: mapTipoToDb(form.tipo),
+        })
+        .select("id")
+        .single();
+      if (error) throw error;
+      return data.id;
+    },
+    onSuccess: (id) => {
+      void queryClient.invalidateQueries({ queryKey: ["indicacoes"] });
+      void queryClient.invalidateQueries({ queryKey: ["atividades"] });
+      toast.success("Indicação enviada.");
+      onSent(id);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.nome || !form.whatsapp) return;
-    addIndicacao(form);
-    onSent();
+    mutation.mutate();
   };
 
   return (
@@ -390,12 +576,16 @@ function NovaIndicacaoModal({ onClose, onSent }: { onClose: () => void; onSent: 
             <h3 className="text-xl font-bold">Nova indicação</h3>
             <p className="text-sm text-muted-foreground mt-1">Preencha os dados da pessoa ou empresa</p>
           </div>
-          <button onClick={onClose} className="h-9 w-9 rounded-lg hover:bg-muted grid place-items-center transition">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-9 w-9 rounded-lg hover:bg-muted grid place-items-center transition"
+          >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <form onSubmit={submit} className="space-y-4">
+        <form onSubmit={(e) => void submit(e)} className="space-y-4">
           <div>
             <Label className="text-sm font-medium">Tipo</Label>
             <div className="mt-2 grid grid-cols-2 gap-2 p-1 bg-muted rounded-xl">
@@ -414,18 +604,35 @@ function NovaIndicacaoModal({ onClose, onSent }: { onClose: () => void; onSent: 
             </div>
           </div>
           <div>
-            <Label htmlFor="m-nome" className="text-sm font-medium">Nome</Label>
-            <Input id="m-nome" required value={form.nome}
+            <Label htmlFor="m-nome" className="text-sm font-medium">
+              Nome
+            </Label>
+            <Input
+              id="m-nome"
+              required
+              value={form.nome}
               onChange={(e) => setForm({ ...form, nome: e.target.value })}
-              className="mt-1.5 rounded-[10px] h-11" />
+              className="mt-1.5 rounded-[10px] h-11"
+            />
           </div>
           <div>
-            <Label htmlFor="m-w" className="text-sm font-medium">WhatsApp</Label>
-            <Input id="m-w" required value={form.whatsapp} placeholder="(11) 99999-9999"
+            <Label htmlFor="m-w" className="text-sm font-medium">
+              WhatsApp
+            </Label>
+            <Input
+              id="m-w"
+              required
+              value={form.whatsapp}
+              placeholder="(11) 99999-9999"
               onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
-              className="mt-1.5 rounded-[10px] h-11" />
+              className="mt-1.5 rounded-[10px] h-11"
+            />
           </div>
-          <Button type="submit" className="w-full rounded-xl h-12 text-base font-semibold mt-2">
+          <Button
+            type="submit"
+            disabled={mutation.isPending}
+            className="w-full rounded-xl h-12 text-base font-semibold mt-2"
+          >
             <Send className="h-4 w-4 mr-2" />
             Enviar indicação
           </Button>

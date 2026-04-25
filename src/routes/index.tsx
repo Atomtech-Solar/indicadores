@@ -49,9 +49,18 @@ function Landing() {
             <a href="#prova" className="hover:text-foreground transition">Resultados</a>
             <a href="#objeções" className="hover:text-foreground transition">Dúvidas</a>
           </nav>
-          <Link to="/cadastro">
-            <Button variant="default" className="rounded-xl">Começar</Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link to="/login">
+              <Button variant="ghost" className="rounded-xl text-muted-foreground">
+                Entrar
+              </Button>
+            </Link>
+            <Link to="/cadastro">
+              <Button variant="default" className="rounded-xl">
+                Começar
+              </Button>
+            </Link>
+          </div>
         </div>
       </header>
 
