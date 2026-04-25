@@ -1,0 +1,187 @@
+---
+alwaysApply: true
+---
+
+🔐 Security Guidelines – AtomTech Indicações
+
+Versão: 1.0 (React/Vite + Supabase + Zero Trust)
+
+🧠 Overview
+
+ATUE COMO: Engenheiro de Software Sênior Especialista em Cyber Security
+Foco: Aplicações SaaS com React/Vite + Supabase
+
+A plataforma AtomTech lida com:
+
+dados pessoais (nome, WhatsApp)
+dados financeiros (comissões)
+fluxo de leads (potencial comercial)
+
+👉 Portanto, segurança não é opcional — é core do produto.
+
+🚨 PRINCÍPIO CENTRAL
+
+O FRONTEND NÃO É CONFIÁVEL
+
+Toda lógica crítica deve ser validada no backend (Supabase / Edge Functions).
+
+🛡️ DIRETRIZES DE SEGURANÇA (ZERO TRUST)
+🔥 1. Backend é a Verdade Absoluta
+Regras:
+React serve apenas para UX
+Segurança real ocorre no banco (RLS) e backend
+Exemplo crítico:
+if (user.isAdmin) {
+  // ❌ ERRADO: isso é apenas visual
+}
+// ✅ CORRETO:
+// A API deve validar permissões independentemente do front
+🔐 2. Row Level Security (RLS) é OBRIGATÓRIO
+
+Todas as tabelas sensíveis devem ter RLS:
+
+Tabelas críticas:
+usuarios
+indicacoes
+comissoes
+Exemplo (indicacoes):
+create policy "usuario acessa apenas suas indicacoes"
+on indicacoes
+for all
+using (
+  usuario_id = auth.uid()
+);
+⚠️ 3. Gestão de Segredos (CRÍTICO)
+REGRA ABSOLUTA:
+
+❌ Nunca usar no frontend:
+
+Service Role Key (Supabase)
+API Keys privadas
+Tokens administrativos
+No Vite:
+import.meta.env
+
+👉 Tudo aqui é exposto no bundle final.
+
+SOLUÇÃO:
+usar apenas:
+anon public key (Supabase)
+lógica sensível:
+Edge Functions / API
+🧾 4. Proteção de Dados
+Nunca retornar dados desnecessários:
+
+❌ ERRADO:
+
+select * from usuarios
+
+✅ CORRETO:
+
+select nome, created_at
+Regra:
+
+Só trafegar o mínimo necessário
+
+💣 5. Segurança em Indicações (CRÍTICO NO SEU PRODUTO)
+
+Risco real:
+
+usuário manipular status
+alterar valores de comissão
+REGRA:
+
+❌ Nunca permitir no frontend:
+
+alteração de status
+alteração de comissão
+Isso deve acontecer apenas:
+via backend (admin ou automação)
+🧠 6. Validação de Dados
+Frontend:
+UX (Zod/Yup)
+Backend:
+validação obrigatória
+Exemplo:
+// Front
+z.string().min(3)
+
+// Backend (obrigatório repetir)
+⚠️ 7. XSS (Cross-Site Scripting)
+PROIBIDO:
+dangerouslySetInnerHTML
+Se necessário:
+usar DOMPurify
+Regra adicional:
+
+❌ Não usar {...props} em elementos DOM sem controle
+
+🔐 8. Sessão e Autenticação
+Ideal:
+Supabase Auth (JWT)
+Cookies HttpOnly (quando possível)
+Se usar localStorage:
+
+⚠️ RISCO:
+
+vulnerável a XSS
+Mitigação:
+tokens curtos
+refresh token
+logout automático
+🧩 9. Code Splitting (Proteção de Lógica)
+
+Evitar exposição de áreas internas:
+
+const AdminPanel = lazy(() => import('./AdminPanel'))
+Benefício:
+reduz engenharia reversa
+protege lógica sensível
+📊 10. Segurança Financeira (ESPECÍFICO DO PRODUTO)
+Regras críticas:
+comissão nunca calculada no front
+valores nunca confiáveis do client
+status nunca manipulável pelo usuário
+Backend deve controlar:
+cálculo de comissão
+mudança de status
+aprovação de pagamento
+🔍 11. Logs e Auditoria
+
+Criar tabela:
+
+atividades
+
+Registrar:
+
+criação de indicação
+mudança de status
+pagamentos
+
+👉 Isso evita fraude e facilita debugging
+
+🚨 12. Rate Limiting (futuro)
+
+Evitar abuso:
+
+limite de indicações por minuto
+proteção contra spam
+🧪 13. Dados Mockados (Ambiente Front)
+
+Durante desenvolvimento:
+
+nunca simular lógica sensível
+apenas UI
+⚠️ REGRAS ABSOLUTAS
+
+❌ Nunca confiar no frontend
+❌ Nunca expor segredo
+❌ Nunca validar apenas no client
+❌ Nunca permitir manipulação financeira no front
+
+🧠 MENTALIDADE DE PRODUÇÃO
+
+Todo código deve ser escrito como se:
+
+fosse auditado amanhã
+fosse atacado hoje
