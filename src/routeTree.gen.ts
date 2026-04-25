@@ -9,8 +9,32 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as PosCadastroRouteImport } from './routes/pos-cadastro'
+import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as ConfirmacaoRouteImport } from './routes/confirmacao'
+import { Route as CadastroRouteImport } from './routes/cadastro'
 import { Route as IndexRouteImport } from './routes/index'
 
+const PosCadastroRoute = PosCadastroRouteImport.update({
+  id: '/pos-cadastro',
+  path: '/pos-cadastro',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DashboardRoute = DashboardRouteImport.update({
+  id: '/dashboard',
+  path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConfirmacaoRoute = ConfirmacaoRouteImport.update({
+  id: '/confirmacao',
+  path: '/confirmacao',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CadastroRoute = CadastroRouteImport.update({
+  id: '/cadastro',
+  path: '/cadastro',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -19,28 +43,78 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/cadastro': typeof CadastroRoute
+  '/confirmacao': typeof ConfirmacaoRoute
+  '/dashboard': typeof DashboardRoute
+  '/pos-cadastro': typeof PosCadastroRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/cadastro': typeof CadastroRoute
+  '/confirmacao': typeof ConfirmacaoRoute
+  '/dashboard': typeof DashboardRoute
+  '/pos-cadastro': typeof PosCadastroRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/cadastro': typeof CadastroRoute
+  '/confirmacao': typeof ConfirmacaoRoute
+  '/dashboard': typeof DashboardRoute
+  '/pos-cadastro': typeof PosCadastroRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/cadastro' | '/confirmacao' | '/dashboard' | '/pos-cadastro'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/cadastro' | '/confirmacao' | '/dashboard' | '/pos-cadastro'
+  id:
+    | '__root__'
+    | '/'
+    | '/cadastro'
+    | '/confirmacao'
+    | '/dashboard'
+    | '/pos-cadastro'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CadastroRoute: typeof CadastroRoute
+  ConfirmacaoRoute: typeof ConfirmacaoRoute
+  DashboardRoute: typeof DashboardRoute
+  PosCadastroRoute: typeof PosCadastroRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/pos-cadastro': {
+      id: '/pos-cadastro'
+      path: '/pos-cadastro'
+      fullPath: '/pos-cadastro'
+      preLoaderRoute: typeof PosCadastroRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dashboard': {
+      id: '/dashboard'
+      path: '/dashboard'
+      fullPath: '/dashboard'
+      preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/confirmacao': {
+      id: '/confirmacao'
+      path: '/confirmacao'
+      fullPath: '/confirmacao'
+      preLoaderRoute: typeof ConfirmacaoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cadastro': {
+      id: '/cadastro'
+      path: '/cadastro'
+      fullPath: '/cadastro'
+      preLoaderRoute: typeof CadastroRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -53,6 +127,10 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CadastroRoute: CadastroRoute,
+  ConfirmacaoRoute: ConfirmacaoRoute,
+  DashboardRoute: DashboardRoute,
+  PosCadastroRoute: PosCadastroRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
