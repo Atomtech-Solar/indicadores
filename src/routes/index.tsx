@@ -2,16 +2,31 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   ArrowRight,
   UserPlus,
+  User,
   Send,
   Wallet,
+  Handshake,
+  DollarSign,
+  GraduationCap,
+  Clock3,
   CheckCircle2,
   XCircle,
   ShieldCheck,
   TrendingUp,
   Users,
+  Facebook,
+  Linkedin,
+  Instagram,
+  Twitter,
+  Zap,
   Sparkles,
+  MessageCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import celularHeroImage from "../../img/Celular-Hero.png";
+import fechadoImage from "../../img/Fechado.png";
+import ctaCadastroImage from "../../img/CTA-Cadastro.png";
+import ativoLogoImage from "../../img/Ativo 1.png";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -34,20 +49,23 @@ export const Route = createFileRoute("/")({
 
 function Landing() {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-white">
       {/* Header */}
       <header className="sticky top-0 z-30 backdrop-blur-md bg-background/70 border-b border-border">
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-xl bg-gradient-primary grid place-items-center shadow-glow">
-              <Sparkles className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <span className="font-bold text-lg tracking-tight">IndicaPro</span>
+          <Link to="/" className="flex items-center">
+            <img
+              src={ativoLogoImage}
+              alt="ATOM TECH"
+              className="h-10 w-auto object-contain"
+            />
           </Link>
           <nav className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
             <a href="#como-funciona" className="hover:text-foreground transition">Como funciona</a>
             <a href="#prova" className="hover:text-foreground transition">Resultados</a>
-            <a href="#objeções" className="hover:text-foreground transition">Dúvidas</a>
+            <a href="#objeções" className="hover:text-foreground transition">Por que funciona</a>
+            <a href="#duvidas" className="hover:text-foreground transition">Dúvidas</a>
+            <a href="#cta-final" className="hover:text-foreground transition">Começar</a>
           </nav>
           <div className="flex items-center gap-2">
             <Link to="/login">
@@ -65,32 +83,78 @@ function Landing() {
       </header>
 
       {/* Hero */}
-      <section className="relative bg-gradient-hero overflow-hidden">
+      <section className="relative bg-white overflow-hidden">
         <div className="absolute inset-0 -z-10 opacity-50"
              style={{ backgroundImage: "radial-gradient(circle at 20% 20%, color-mix(in oklab, var(--primary) 18%, transparent), transparent 50%)" }} />
         <div className="max-w-7xl mx-auto px-6 py-20 md:py-28 grid lg:grid-cols-2 gap-12 items-center">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary-light text-primary-dark text-xs font-semibold mb-6">
-              <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-              Mais de 2.000 indicações pagas
+          <div className="px-2 py-4 md:px-0 md:py-2">
+            <div className="inline-flex items-center justify-center rounded-full border border-[#A5D6A7] bg-[#E8F5E9] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2E7D32] mb-6">
+              Sem investimento • Sem experiência • <span className="text-[#1B8F3A]">100% online</span>
             </div>
-            <h1 className="text-4xl md:text-5xl lg:text-[40px] font-bold leading-[1.1] tracking-tight">
-              Ganhe dinheiro <span className="text-primary">indicando</span> pessoas
-              <br />ou empresas
+            <h1 className="text-3xl md:text-5xl lg:text-[56px] font-black leading-[0.98] tracking-[-0.015em] uppercase">
+              <span className="block text-[#111111]">Ganhe dinheiro</span>
+              <span className="block text-[#1B8F3A]">Indicando pessoas</span>
+              <span className="block text-[#1B8F3A]">ou empresas</span>
             </h1>
-            <p className="mt-5 text-lg text-muted-foreground max-w-xl">
-              Você indica. Nós fechamos. Você recebe comissão. Sem precisar vender, sem precisar investir.
+            <div className="mt-5 relative inline-flex items-center pr-16 md:pr-20">
+              <p className="inline-flex -rotate-[1deg] rounded-md bg-[#FBC02D] px-4 py-2 text-sm md:text-xl font-black uppercase leading-none text-black shadow-sm">
+                Qualquer pessoa pode começar!
+              </p>
+              <span
+                className="pointer-events-none absolute -top-11 -right-8 md:-right-10 h-14 w-14 md:h-16 md:w-16"
+                aria-hidden="true"
+              >
+                <svg viewBox="0 0 64 64" className="h-full w-full">
+                  <path
+                    d="M51 7 C 55 18, 54 31, 43 41 C 37 46, 30 49, 22 51"
+                    fill="none"
+                    stroke="#1B8F3A"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M22 51 L29 46"
+                    fill="none"
+                    stroke="#1B8F3A"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M22 51 L29 56"
+                    fill="none"
+                    stroke="#1B8F3A"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </span>
+            </div>
+            <p className="mt-6 text-base md:text-xl leading-snug text-[#333333] max-w-xl">
+              Você indica, nós fechamos e você recebe <span className="font-semibold text-[#1B8F3A]">comissão</span> por cada negócio fechado.
+              <br />
+              <span className="text-[#666666] text-base md:text-lg">Simples, transparente e sem precisar vender.</span>
             </p>
-            <div className="mt-8 flex flex-col sm:flex-row gap-3">
+            <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:items-center">
               <Link to="/cadastro">
-                <Button size="lg" className="rounded-xl h-13 px-7 text-base font-semibold shadow-glow group">
-                  Começar a ganhar agora
-                  <ArrowRight className="ml-1 h-5 w-5 group-hover:translate-x-1 transition" />
+                <Button
+                  size="lg"
+                  className="rounded-full h-12 px-6 text-sm font-bold uppercase bg-[#1B8F3A] hover:bg-[#177A33] text-white shadow-[0_8px_16px_-8px_rgba(27,143,58,0.7)]"
+                >
+                  <MessageCircle className="mr-2 h-5 w-5" />
+                  Quero começar a ganhar agora
                 </Button>
               </Link>
               <a href="#como-funciona">
-                <Button size="lg" variant="outline" className="rounded-xl h-13 px-7 text-base font-medium bg-card">
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="rounded-full h-12 px-6 text-sm font-bold uppercase border-[#1B8F3A] text-[#1B8F3A] bg-transparent hover:bg-[#1B8F3A]/10"
+                >
                   Ver como funciona
+                  <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </a>
             </div>
@@ -100,38 +164,32 @@ function Landing() {
             </div>
           </div>
 
-          {/* Mock Dashboard */}
-          <div className="relative">
-            <div className="absolute -inset-4 bg-primary/10 rounded-3xl blur-2xl" />
-            <div className="relative rounded-2xl bg-card shadow-card-hover border border-border p-5">
-              <div className="flex items-center justify-between mb-5">
-                <div>
-                  <p className="text-xs text-muted-foreground">Total ganho</p>
-                  <p className="text-3xl font-bold text-primary">R$ 12.450</p>
-                </div>
-                <div className="h-10 w-10 rounded-full bg-primary-light grid place-items-center">
-                  <Wallet className="h-5 w-5 text-primary-dark" />
-                </div>
+          <div className="relative flex justify-center lg:justify-end">
+            <img
+              src={celularHeroImage}
+              alt="Prévia do aplicativo no celular"
+              className="w-full max-w-[420px] h-auto object-contain"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section className="px-4 md:px-6 py-5 bg-[#FAFAFA] border-y border-black/5">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_1.35fr] gap-4 md:gap-5 items-center">
+            <BenefitItem icon={Users} text="Para qualquer pessoa" className="lg:-translate-y-1" />
+            <BenefitItem icon={Handshake} text="Indique pessoas ou empresas" className="lg:translate-y-1" />
+            <BenefitItem icon={DollarSign} text="Receba comissão por cada negócio" className="lg:-translate-y-0.5" />
+            <BenefitItem icon={ShieldCheck} text="Total segurança e transparência" className="lg:translate-y-1.5" />
+
+            <div className="lg:ml-2 flex items-center gap-3 rounded-2xl px-3 py-2">
+              <div className="h-11 w-11 rounded-full bg-[#1B8F3A] grid place-items-center shrink-0">
+                <ShieldCheck className="h-6 w-6 text-white" />
               </div>
-              <div className="grid grid-cols-3 gap-3 mb-5">
-                <MiniStat label="Este mês" value="R$ 2.150" tone="primary" />
-                <MiniStat label="Pendente" value="R$ 3.800" tone="accent" />
-                <MiniStat label="Indicações" value="48" tone="muted" />
-              </div>
-              <div className="space-y-2.5">
-                {[
-                  { n: "Mariana Silva", v: "+ R$ 750", s: "Fechado" },
-                  { n: "Padaria Bom Pão", v: "+ R$ 1.500", s: "Em negociação" },
-                  { n: "Carlos Eduardo", v: "+ R$ 500", s: "Em análise" },
-                ].map((r, i) => (
-                  <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-muted/50">
-                    <div>
-                      <p className="text-sm font-medium">{r.n}</p>
-                      <p className="text-xs text-muted-foreground">{r.s}</p>
-                    </div>
-                    <span className="text-sm font-bold text-primary">{r.v}</span>
-                  </div>
-                ))}
+              <div className="leading-tight">
+                <p className="text-xs text-[#666666]">Já pagamos mais de</p>
+                <p className="text-[28px] md:text-[30px] font-bold text-[#1B8F3A]">R$ 50.000,00</p>
+                <p className="text-xs text-[#666666]">em comissões para nossos parceiros!</p>
               </div>
             </div>
           </div>
@@ -139,127 +197,312 @@ function Landing() {
       </section>
 
       {/* Como funciona */}
-      <section id="como-funciona" className="py-20 px-6">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-14">
-            <p className="text-sm font-semibold text-primary uppercase tracking-wider">Como funciona</p>
-            <h2 className="text-3xl md:text-4xl font-bold mt-2">Em 3 passos simples</h2>
+      <section id="como-funciona" className="pt-12 md:pt-16">
+        <div className="bg-white px-6">
+          <div className="max-w-6xl mx-auto text-center pb-8 md:pb-10">
+            <h2 className="text-3xl md:text-5xl font-bold tracking-tight text-[#111111]">
+              Comece a ganhar em <span className="text-[#1B8F3A]">3 passos</span> simples
+            </h2>
+            <p className="mt-3 text-lg text-[#666666]">É rápido, fácil e 100% online</p>
           </div>
-          <div className="grid md:grid-cols-3 gap-6 relative">
-            <Step n={1} icon={UserPlus} title="Cadastro" desc="Crie sua conta grátis em menos de 1 minuto. Sem burocracia." />
-            <Step n={2} icon={Send} title="Indicação" desc="Indique pessoas ou empresas que podem precisar dos nossos serviços." />
-            <Step n={3} icon={Wallet} title="Comissão" desc="Receba até R$ 1.500 por cada negócio fechado direto na sua conta." highlight />
+        </div>
+
+        <svg
+          viewBox="0 0 1440 170"
+          preserveAspectRatio="none"
+          className="block w-full h-[92px] md:h-[120px]"
+          aria-hidden="true"
+        >
+          <path
+            d="M0,96 C180,48 370,28 560,54 C720,76 860,132 1040,132 C1188,132 1310,110 1440,76 L1440,170 L0,170 Z"
+            fill="#19803A"
+          />
+        </svg>
+
+        <div className="relative bg-[#19803A] px-6 pb-20 md:pb-24 pt-2 md:pt-4 overflow-hidden">
+          <div className="max-w-6xl mx-auto relative">
+            <div className="hidden lg:block absolute left-[16.66%] right-[16.66%] top-[112px] h-px bg-white/20" />
+            <div className="hidden lg:block absolute left-1/3 top-[107px] h-2.5 w-2.5 -translate-x-1/2 rounded-full bg-white/80" />
+            <div className="hidden lg:block absolute left-2/3 top-[107px] h-2.5 w-2.5 -translate-x-1/2 rounded-full bg-white/80" />
+
+            <div className="grid gap-6 lg:grid-cols-3 relative">
+              <ProcessStepCard
+                n={1}
+                icon={UserPlus}
+                title="Cadastre-se"
+                desc="Crie sua conta gratuitamente em poucos segundos."
+              />
+              <ProcessStepCard
+                n={2}
+                icon={Send}
+                title="Envie a indicação"
+                desc="Informe os dados da pessoa ou empresa interessada."
+              />
+              <ProcessStepCard
+                n={3}
+                icon={Wallet}
+                title="Receba comissão"
+                desc="Nós analisamos, fechamos o negócio e você recebe sua comissão."
+                highlight
+                badge="Você ganha aqui!"
+              />
+            </div>
           </div>
+
+          <svg
+            viewBox="0 0 1440 120"
+            preserveAspectRatio="none"
+            className="absolute bottom-[-1px] left-0 block w-full h-[42px] md:h-[56px] pointer-events-none"
+            aria-hidden="true"
+          >
+            <path
+              d="M0,82 C190,52 378,44 570,58 C748,70 900,94 1068,96 C1222,98 1336,80 1440,62 L1440,120 L0,120 Z"
+              fill="#065022"
+            />
+          </svg>
         </div>
       </section>
 
       {/* Prova */}
-      <section id="prova" className="py-20 px-6 bg-card">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-14">
-            <p className="text-sm font-semibold text-primary uppercase tracking-wider">Resultados reais</p>
-            <h2 className="text-3xl md:text-4xl font-bold mt-2">Quem indica, ganha de verdade</h2>
+      <section id="prova" className="relative bg-[#065022] pt-0 pb-16 md:pb-20 overflow-hidden">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center text-white pt-2 md:pt-4">
+            <h2 className="text-3xl md:text-5xl font-semibold leading-tight">
+              Pessoas <span className="text-[#A3E635]">comuns</span> já estão
+              <br />
+              ganhando com indicações
+            </h2>
+            <p className="mt-3 text-base md:text-xl text-white/85">Resultados reais de quem já começou</p>
           </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            <ProofCard icon={Wallet} value="+ R$ 750" label="Por indicação fechada" />
-            <ProofCard icon={TrendingUp} value="+ R$ 12.450" label="Ganhos médios anuais" />
-            <ProofCard icon={Users} value="+ 2.000" label="Indicações pagas" />
-            <ProofCard icon={ShieldCheck} value="100%" label="Pagamentos garantidos" />
+
+          <div className="mt-10 grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <ResultCard
+              icon={DollarSign}
+              value="+R$ 750"
+              title="por indicação"
+              description="Comissão média por negócio fechado"
+            />
+            <ResultCard
+              icon={TrendingUp}
+              value="+R$ 12.450"
+              title="recebidos"
+              description="Ganhos acumulados de um parceiro"
+            />
+            <ResultCard
+              icon={UserPlus}
+              value="+2.000"
+              title="indicações enviadas"
+              description="Rede ativa crescendo todos os dias"
+            />
+            <ResultCard
+              icon={ShieldCheck}
+              title={
+                <>
+                  <span className="text-[#10A34A]">Pagamentos </span>
+                  <span className="text-[#111111]">garantidos</span>
+                </>
+              }
+              description="Total transparência em cada comissão"
+            />
           </div>
         </div>
       </section>
 
       {/* Objeções */}
-      <section id="objeções" className="py-20 px-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-14">
-            <p className="text-sm font-semibold text-primary uppercase tracking-wider">Sem complicação</p>
-            <h2 className="text-3xl md:text-4xl font-bold mt-2">Perguntas que você está fazendo agora</h2>
+      <section id="objeções" className="py-20 px-6 bg-[#1B8F3A]/8">
+        <div className="max-w-6xl mx-auto grid lg:grid-cols-[1fr_1.1fr] gap-10 lg:gap-12 items-start">
+          <div>
+            <span className="inline-flex rounded-full border border-[#A5D6A7] bg-[#E8F5E9] px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#2E7D32]">
+              Por que funciona
+            </span>
+            <h2 className="mt-5 text-4xl md:text-5xl font-bold leading-[1.05] tracking-tight text-[#111111]">
+              Por que <span className="text-[#1B8F3A]">pagamos</span>
+              <br />
+              por indicações?
+            </h2>
+            <p className="mt-5 text-lg md:text-2xl leading-snug text-[#222222] max-w-xl">
+              Indicações são o canal mais eficiente de aquisição. Você conecta pessoas interessadas, nós fechamos o negócio e compartilhamos o lucro com quem gerou a oportunidade.
+            </p>
           </div>
-          <div className="grid md:grid-cols-3 gap-5">
-            <ObjCard q="Precisa vender?" a="Não" positive={false} />
-            <ObjCard q="Precisa investir?" a="Não" positive={false} />
-            <ObjCard q="Funciona pra mim?" a="Sim" positive={true} />
+
+          <div className="flex justify-center lg:justify-end">
+            <img
+              src={fechadoImage}
+              alt="Negócio fechado"
+              className="w-full max-w-[520px] h-auto object-contain"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section id="duvidas" className="py-20 px-6 bg-white">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center">
+            <span className="inline-flex rounded-full border border-[#A5D6A7] bg-[#E8F5E9] px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#2E7D32]">
+              Sem complicação, sem barreiras
+            </span>
+            <h2 className="mt-4 text-4xl md:text-5xl font-bold tracking-tight text-[#111111]">
+              Tire suas <span className="text-[#1B8F3A]">dúvidas</span>
+            </h2>
+          </div>
+
+          <div className="mt-10 grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
+            <FaqCard icon={User} question="Preciso vender?" answer="Não." note="Você só indica." />
+            <FaqCard icon={DollarSign} question="Preciso investir?" answer="Não." note="É totalmente gratuito." />
+            <FaqCard icon={GraduationCap} question="Preciso ter experiência?" answer="Não." note="Qualquer pessoa pode começar." />
+            <FaqCard icon={Handshake} question="E se não fechar?" answer="Você não" note="perde nada." />
           </div>
         </div>
       </section>
 
       {/* CTA Final */}
-      <section className="py-24 px-6">
-        <div className="max-w-4xl mx-auto rounded-3xl bg-gradient-primary p-10 md:p-14 text-center shadow-glow relative overflow-hidden">
-          <div className="absolute inset-0 opacity-20"
-               style={{ backgroundImage: "radial-gradient(circle at 80% 20%, white, transparent 40%)" }} />
-          <div className="relative">
-            <h2 className="text-3xl md:text-4xl font-bold text-primary-foreground">
-              Comece agora e faça sua primeira indicação
-            </h2>
-            <p className="mt-4 text-primary-foreground/90 text-lg">
-              Você pode ganhar sua primeira comissão ainda esta semana.
-            </p>
-            <Link to="/cadastro" className="inline-block mt-8">
-              <Button size="lg" variant="secondary" className="rounded-xl h-13 px-8 text-base font-semibold bg-card text-foreground hover:bg-card/90">
-                Quero começar a ganhar
-                <ArrowRight className="ml-1 h-5 w-5" />
-              </Button>
-            </Link>
+      <section id="cta-final" className="py-24 px-3 md:px-4">
+        <div className="max-w-[1400px] mx-auto rounded-3xl bg-[#065022] p-8 md:p-10 shadow-[0_18px_40px_-24px_rgba(6,80,34,0.8)] relative overflow-hidden">
+          <div
+            className="absolute inset-0 opacity-45"
+            style={{ backgroundImage: "radial-gradient(circle at 72% 55%, rgba(34,197,94,0.45), rgba(34,197,94,0.18) 28%, transparent 56%)" }}
+          />
+          <div
+            className="absolute inset-0 opacity-55"
+            style={{ backgroundImage: "radial-gradient(circle at 18% 18%, rgba(132,204,22,0.22), transparent 34%), radial-gradient(circle at 84% 20%, rgba(255,255,255,0.15), transparent 28%)" }}
+          />
+          <div className="absolute -top-24 right-[28%] h-72 w-72 rounded-full bg-[#84CC16]/15 blur-3xl" />
+          <div className="absolute -bottom-20 left-[48%] h-64 w-64 rounded-full bg-[#16A34A]/20 blur-3xl" />
+          <div className="absolute top-20 right-[10%] h-40 w-40 rounded-full bg-white/10 blur-2xl" />
+          <div className="absolute top-14 left-[42%] h-24 w-24 rounded-full border border-[#84CC16]/20" />
+          <div className="absolute bottom-12 right-[30%] h-16 w-16 rounded-full border border-white/20" />
+          <div className="relative grid lg:grid-cols-2 gap-8 items-center">
+            <div className="text-white">
+              <span className="inline-flex rounded-full border border-[#84CC16] bg-transparent px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-[#84CC16]">
+                Chegou sua vez
+              </span>
+              <h2 className="mt-5 text-4xl md:text-5xl font-bold leading-[1.05] tracking-tight">
+                Comece agora e faça
+                <br />
+                sua <span className="text-[#84CC16]">primeira indicação</span>
+              </h2>
+              <p className="mt-5 inline-flex items-center gap-2 text-lg text-white/90">
+                <Clock3 className="h-5 w-5 text-white" />
+                Leva menos de 1 minuto para começar
+              </p>
+
+              <div className="mt-7 inline-flex flex-col items-center">
+                <Link to="/cadastro" className="inline-block">
+                  <Button
+                    size="lg"
+                    className="rounded-full h-14 px-8 text-2xl font-semibold bg-[#84CC16] hover:bg-[#73B312] text-white shadow-[0_10px_20px_-10px_rgba(132,204,22,0.9)]"
+                  >
+                    Comece a ganhar agora
+                    <ArrowRight className="ml-3 h-5 w-5" />
+                  </Button>
+                </Link>
+                <a href="#como-funciona" className="mt-4 inline-flex items-center gap-2 text-lg font-medium text-white/90 hover:text-white">
+                  Ver como funciona
+                  <ArrowRight className="h-4 w-4" />
+                </a>
+              </div>
+            </div>
+
+            <div className="flex justify-center lg:justify-end">
+              <img
+                src={ctaCadastroImage}
+                alt="Prévia de cadastro e comissão"
+                className="w-full max-w-[640px] h-auto object-contain"
+              />
+            </div>
           </div>
         </div>
       </section>
 
-      <footer className="py-8 px-6 border-t border-border">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-4 items-center justify-between text-sm text-muted-foreground">
-          <p>© 2025 IndicaPro. Todos os direitos reservados.</p>
-          <p>Pagamentos garantidos por contrato.</p>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }
 
-function MiniStat({ label, value, tone }: { label: string; value: string; tone: "primary" | "accent" | "muted" }) {
-  const toneClass =
-    tone === "primary" ? "text-primary" : tone === "accent" ? "text-accent-foreground" : "text-foreground";
+function ProcessStepCard({
+  n,
+  icon: Icon,
+  title,
+  desc,
+  highlight,
+  badge,
+}: {
+  n: number;
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  desc: string;
+  highlight?: boolean;
+  badge?: string;
+}) {
   return (
-    <div className="rounded-xl bg-muted/60 p-3">
-      <p className="text-[11px] text-muted-foreground">{label}</p>
-      <p className={`text-base font-bold ${toneClass}`}>{value}</p>
-    </div>
-  );
-}
-
-function Step({
-  n, icon: Icon, title, desc, highlight,
-}: { n: number; icon: React.ComponentType<{ className?: string }>; title: string; desc: string; highlight?: boolean }) {
-  return (
-    <div
-      className={`relative rounded-2xl p-7 shadow-card border transition hover:shadow-card-hover ${
-        highlight ? "bg-primary-light border-primary" : "bg-card border-border"
-      }`}
-    >
-      <div className={`h-14 w-14 rounded-2xl grid place-items-center mb-5 ${
-        highlight ? "bg-primary text-primary-foreground" : "bg-primary-light text-primary-dark"
-      }`}>
-        <Icon className="h-7 w-7" />
-      </div>
-      <div className="flex items-baseline gap-2">
-        <span className={`text-xs font-bold ${highlight ? "text-primary-dark" : "text-muted-foreground"}`}>
-          PASSO {n}
+    <div className="relative rounded-[18px] bg-white p-7 md:p-8 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.45)] min-h-[230px] flex flex-col items-center text-center">
+      {badge && (
+        <span className="absolute -top-3 right-3 md:right-4 inline-flex items-center rounded-full bg-[#1B8F3A] px-3 py-1 text-[11px] font-semibold text-white rotate-[-2deg]">
+          {badge}
         </span>
+      )}
+      <div className="h-14 w-14 rounded-full bg-[#E8F5E9] grid place-items-center">
+        <Icon className="h-7 w-7 text-[#1B8F3A]" />
       </div>
-      <h3 className={`text-xl font-semibold mt-1 ${highlight ? "text-primary-dark" : ""}`}>{title}</h3>
-      <p className="text-sm text-muted-foreground mt-2">{desc}</p>
+      <div className="mt-3 h-7 w-7 rounded-full bg-[#1B8F3A] text-white text-sm font-bold grid place-items-center">
+        {n}
+      </div>
+      <h3 className={`mt-3 text-[30px] font-semibold ${highlight ? "text-[#1B8F3A]" : "text-[#1F2937]"}`}>{title}</h3>
+      <p className="mt-2 text-sm md:text-base text-[#666666] leading-snug">{desc}</p>
     </div>
   );
 }
 
-function ProofCard({ icon: Icon, value, label }: { icon: React.ComponentType<{ className?: string }>; value: string; label: string }) {
+function BenefitItem({
+  icon: Icon,
+  text,
+  className,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  text: string;
+  className?: string;
+}) {
+  const words = text.split(" ");
+  const pivot = Math.ceil(words.length / 2);
+  const firstLine = words.slice(0, pivot).join(" ");
+  const secondLine = words.slice(pivot).join(" ");
+
   return (
-    <div className="rounded-2xl bg-card border border-border p-6 shadow-card hover:shadow-card-hover transition">
-      <div className="h-11 w-11 rounded-xl bg-primary-light grid place-items-center mb-4">
-        <Icon className="h-5 w-5 text-primary-dark" />
+    <div className={`flex items-center gap-3 ${className ?? ""}`}>
+      <div className="h-11 w-11 rounded-full bg-[#F1F3F4] grid place-items-center shrink-0">
+        <Icon className="h-6 w-6 text-[#1B8F3A]" />
       </div>
-      <p className="text-2xl font-bold text-primary">{value}</p>
-      <p className="text-sm text-muted-foreground mt-1">{label}</p>
+      <p className="text-sm text-[#333333] font-medium leading-tight">
+        <span className="block">{firstLine}</span>
+        <span className="block">{secondLine}</span>
+      </p>
+    </div>
+  );
+}
+
+function ResultCard({
+  icon: Icon,
+  value,
+  title,
+  description,
+  emphasizeTitle,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  value?: string;
+  title: React.ReactNode;
+  description: string;
+  emphasizeTitle?: boolean;
+}) {
+  return (
+    <div className="rounded-[18px] bg-white p-6 text-center shadow-[0_12px_24px_-18px_rgba(0,0,0,0.35)]">
+      <div className="mx-auto h-14 w-14 rounded-full bg-[#BFD1C7] grid place-items-center mb-4">
+        <Icon className="h-7 w-7 text-[#0E7A33]" />
+      </div>
+      {value && <p className="text-[28px] md:text-[30px] leading-none font-semibold text-[#10A34A]">{value}</p>}
+      <p className={`mt-1 text-[30px] md:text-[32px] leading-none font-semibold ${emphasizeTitle ? "text-[#10A34A]" : "text-[#111111]"}`}>
+        {title}
+      </p>
+      <p className="mt-3 text-sm text-[#666666] leading-snug">{description}</p>
     </div>
   );
 }
@@ -274,6 +517,131 @@ function ObjCard({ q, a, positive }: { q: string; a: string; positive: boolean }
         {positive ? <CheckCircle2 className="h-5 w-5 text-primary" /> : <XCircle className="h-5 w-5 text-muted-foreground" />}
         {a}
       </div>
+    </div>
+  );
+}
+
+function FaqCard({
+  icon: Icon,
+  question,
+  answer,
+  note,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  question: string;
+  answer: string;
+  note: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-black/10 bg-white p-6">
+      <div className="mx-auto h-16 w-16 rounded-full bg-[#E8F5E9] grid place-items-center">
+        <Icon className="h-8 w-8 text-[#1B8F3A]" />
+      </div>
+      <p className="mt-5 text-[32px] leading-tight font-semibold text-[#111111] text-center">{question}</p>
+      <div className="my-5 h-px bg-black/10" />
+      <div className="flex items-start gap-2.5">
+        <CheckCircle2 className="h-5 w-5 mt-0.5 text-[#1B8F3A] shrink-0" />
+        <p className="text-lg leading-snug text-[#111111]">
+          <span className="font-semibold text-[#1B8F3A]">{answer}</span>
+          <br />
+          <span>{note}</span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SiteFooter() {
+  return (
+    <footer className="bg-green-50 px-6 py-16 text-gray-900">
+      <div className="max-w-7xl mx-auto">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
+          <div>
+            <div className="inline-flex items-center gap-2">
+              <img
+                src={ativoLogoImage}
+                alt="ATOM TECH"
+                className="h-11 w-auto object-contain"
+              />
+            </div>
+            <p className="mt-4 text-sm text-gray-500 leading-relaxed max-w-xs">
+              Plataforma desenvolvida para que usuários indiquem pessoas e ganhem comissões de forma simples, prática e transparente.
+            </p>
+            <div className="mt-5 flex items-center gap-3 text-gray-500">
+              <a href="#" className="transition-colors hover:text-green-600" aria-label="Facebook">
+                <Facebook className="h-4 w-4" />
+              </a>
+              <a href="#" className="transition-colors hover:text-green-600" aria-label="LinkedIn">
+                <Linkedin className="h-4 w-4" />
+              </a>
+              <a href="#" className="transition-colors hover:text-green-600" aria-label="Instagram">
+                <Instagram className="h-4 w-4" />
+              </a>
+              <a href="#" className="transition-colors hover:text-green-600" aria-label="Twitter">
+                <Twitter className="h-4 w-4" />
+              </a>
+            </div>
+          </div>
+
+          <FooterLinkGroup
+            title="Empresa"
+            links={["Início", "Sobre nós", "Preços", "Blog", "Detalhes do blog"]}
+          />
+
+          <FooterLinkGroup
+            title="Produto"
+            links={["Funcionalidades", "Carreiras", "Como funciona", "Contato"]}
+          />
+
+          <div>
+            <h3 className="text-base font-semibold">Newsletter</h3>
+            <p className="mt-4 text-sm text-gray-500 leading-relaxed">
+              Receba dicas, atualizações da plataforma e estratégias para aumentar suas indicações e ganhos.
+            </p>
+            <form className="mt-5 flex items-center gap-2">
+              <input
+                type="email"
+                placeholder="Seu e-mail"
+                className="h-11 flex-1 rounded-full border border-green-200 bg-white px-4 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-green-500"
+              />
+              <button
+                type="submit"
+                className="inline-flex items-center gap-1 rounded-full bg-green-500 px-5 py-2 text-sm font-medium text-white transition hover:bg-green-600"
+              >
+                Inscrever
+                <ArrowRight className="h-4 w-4" />
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <div className="mt-12 border-t border-green-200 pt-6 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+          <p>© 2025 ATOM TECH. Todos os direitos reservados.</p>
+          <div className="flex items-center gap-6">
+            <a href="#" className="transition-colors hover:text-green-600">Política de Privacidade</a>
+            <a href="#" className="transition-colors hover:text-green-600">Termos de Serviço</a>
+            <a href="#" className="transition-colors hover:text-green-600">Segurança</a>
+            <a href="#" className="transition-colors hover:text-green-600">Cookies</a>
+          </div>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+function FooterLinkGroup({ title, links }: { title: string; links: string[] }) {
+  return (
+    <div>
+      <h3 className="text-base font-semibold">{title}</h3>
+      <ul className="mt-4 space-y-3">
+        {links.map((item) => (
+          <li key={item}>
+            <a href="#" className="text-sm text-gray-500 transition-colors hover:text-green-600">
+              {item}
+            </a>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
