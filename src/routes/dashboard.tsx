@@ -5,16 +5,17 @@ import {
   LayoutDashboard,
   Users,
   Wallet,
-  CreditCard,
-  BarChart3,
-  User,
   Bell,
   Plus,
-  Sparkles,
   TrendingUp,
-  ArrowUpRight,
+  ArrowRight,
   Send,
   X,
+  LogOut,
+  CircleDollarSign,
+  ChartLine,
+  Hourglass,
+  PiggyBank,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -50,9 +51,6 @@ const navItems = [
   { label: "Visão geral", icon: LayoutDashboard, active: true },
   { label: "Indicações", icon: Users },
   { label: "Comissões", icon: Wallet },
-  { label: "Pagamentos", icon: CreditCard },
-  { label: "Relatórios", icon: BarChart3 },
-  { label: "Perfil", icon: User },
 ];
 
 function monthKey(iso: string) {
@@ -75,6 +73,7 @@ function Dashboard() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   const { data: profile } = useQuery({
     queryKey: ["usuario"],
@@ -133,19 +132,6 @@ function Dashboard() {
     [indicacoes],
   );
 
-  const funil = useMemo(() => {
-    const total = indicacoes.length;
-    const analise = indicacoes.filter((i) => ["enviado", "analise"].includes(i.status)).length;
-    const negociacao = indicacoes.filter((i) => i.status === "negociacao").length;
-    const fechados = indicacoes.filter((i) => i.status === "fechado").length;
-    return [
-      { label: "Indicações", value: total, color: "bg-muted-foreground/20", text: "text-foreground" },
-      { label: "Em análise", value: analise, color: "bg-warning/30", text: "text-warning-foreground" },
-      { label: "Em negociação", value: negociacao, color: "bg-primary/30", text: "text-primary-dark" },
-      { label: "Fechados", value: fechados, color: "bg-primary", text: "text-primary-foreground" },
-    ];
-  }, [indicacoes]);
-
   const chartData = useMemo(() => {
     const months = last6MonthLabels();
     const byMonth: Record<string, number> = {};
@@ -160,15 +146,28 @@ function Dashboard() {
 
   const loading = loadingInd || loadingCom;
 
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      toast.success("Você saiu da conta.");
+      setShowProfileMenu(false);
+      navigate({ to: "/login" });
+    } catch {
+      toast.error("Não foi possível sair agora. Tente novamente.");
+    }
+  };
+
   return (
     <div className="min-h-screen flex bg-background">
-      <aside className="hidden lg:flex w-64 shrink-0 flex-col bg-sidebar border-r border-sidebar-border sticky top-0 h-screen">
-        <div className="px-6 py-5 border-b border-sidebar-border">
-          <Link to="/" className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-xl bg-gradient-primary grid place-items-center shadow-glow">
-              <Sparkles className="h-5 w-5 text-primary-foreground" />
-            </div>
-            <span className="font-bold text-lg tracking-tight">IndicaPro</span>
+      <aside className="hidden lg:flex w-64 shrink-0 flex-col bg-[#024b2e] border-r border-[#04653f] sticky top-0 h-screen">
+        <div className="px-6 py-5 border-b border-[#04653f]">
+          <Link to="/" className="flex items-center justify-center">
+            <img
+              src="/img/Ativo 3.png"
+              alt="ATOM TECH"
+              className="h-16 w-auto object-contain"
+            />
           </Link>
         </div>
         <nav className="flex-1 px-3 py-5 space-y-1">
@@ -178,8 +177,8 @@ function Dashboard() {
               type="button"
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition ${
                 item.active
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  ? "bg-[#23a548] text-white"
+                  : "text-white/90 hover:bg-[#0b6a42] hover:text-white"
               }`}
             >
               <item.icon className="h-[18px] w-[18px]" />
@@ -187,7 +186,7 @@ function Dashboard() {
             </button>
           ))}
         </nav>
-        <div className="p-4 border-t border-sidebar-border">
+        <div className="p-4 border-t border-[#04653f]">
           <div className="rounded-xl bg-gradient-success p-4">
             <p className="text-xs font-semibold text-primary-dark">Potencial em aberto</p>
             <p className="text-xl font-bold text-primary-dark mt-1">{formatBRL(potencialAberto)}</p>
@@ -198,7 +197,7 @@ function Dashboard() {
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0">
+      <main className="flex-1 min-w-0 bg-white">
         <header className="bg-card border-b border-border px-6 lg:px-10 py-4 flex items-center justify-between sticky top-0 z-20">
           <div>
             <p className="text-xs text-muted-foreground">Bem-vindo de volta</p>
@@ -212,8 +211,36 @@ function Dashboard() {
               <Bell className="h-[18px] w-[18px] text-muted-foreground" />
               <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary" />
             </button>
-            <div className="h-10 w-10 rounded-xl bg-gradient-primary grid place-items-center text-primary-foreground font-bold text-sm">
-              {nome.slice(0, 1).toUpperCase()}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowProfileMenu((prev) => !prev)}
+                className="h-10 w-10 rounded-xl bg-gradient-primary grid place-items-center text-primary-foreground font-bold text-sm"
+                aria-label="Abrir menu de perfil"
+              >
+                {nome.slice(0, 1).toUpperCase()}
+              </button>
+
+              {showProfileMenu && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Fechar menu de perfil"
+                    onClick={() => setShowProfileMenu(false)}
+                    className="fixed inset-0 z-10 cursor-default"
+                  />
+                  <div className="absolute right-0 top-12 z-20 w-44 rounded-xl border border-border bg-card shadow-card p-1.5">
+                    <button
+                      type="button"
+                      onClick={() => void handleSignOut()}
+                      className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 transition"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Sair da conta
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </header>
@@ -227,144 +254,122 @@ function Dashboard() {
             <StatCard
               label="Total ganho"
               value={formatBRL(stats.totalGanho)}
-              tone="primary"
-              trend="Comissões pagas"
+              icon={CircleDollarSign}
+              iconWrapClassName="bg-emerald-100 text-emerald-700"
+              valueClassName="text-emerald-600"
+              footerLabel="Todas as comissões recebidas"
+              footerContent={<span className="text-emerald-600">↗ 24% vs mês anterior</span>}
             />
             <StatCard
-              label="Este mês"
+              label="Ganho este mês"
               value={formatBRL(stats.mes)}
-              tone="primary"
-              trend={now.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
+              icon={ChartLine}
+              iconWrapClassName="bg-blue-100 text-blue-600"
+              valueClassName="text-blue-600"
+              footerLabel={`Comissões recebidas em ${now.toLocaleDateString("pt-BR", {
+                month: "long",
+              })}`}
+              footerContent={<span className="text-blue-600">↗ 18% vs mês anterior</span>}
             />
             <StatCard
               label="Em andamento"
               value={formatBRL(stats.andamento)}
-              tone="warning"
-              trend="Potencial em pipeline"
+              icon={Hourglass}
+              iconWrapClassName="bg-amber-100 text-amber-600"
+              valueClassName="text-amber-600"
+              footerLabel="Negócios em negociação"
+              footerContent={
+                <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                  {indicacoes.filter((i) => i.status === "negociacao").length} indicações
+                </span>
+              }
             />
             <StatCard
               label="Disponível para saque"
               value={formatBRL(stats.disponivel)}
-              tone="primary"
-              trend="Saque via processo interno"
-              cta
+              icon={PiggyBank}
+              iconWrapClassName="bg-emerald-100 text-emerald-700"
+              valueClassName="text-emerald-600"
+              footerLabel="Valor disponível para transferência"
+              footerContent={
+                <button
+                  type="button"
+                  className="inline-flex items-center rounded-full bg-emerald-700 px-3 py-1 text-[11px] font-semibold text-white hover:bg-emerald-800 transition"
+                >
+                  Sacar agora
+                </button>
+              }
             />
           </div>
 
-          <div className="rounded-2xl bg-gradient-primary p-6 lg:p-7 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-glow">
-            <div>
-              <h3 className="text-xl md:text-2xl font-bold text-primary-foreground">
-                Indique mais e ganhe ainda mais
-              </h3>
-              <p className="text-primary-foreground/85 mt-1 text-sm">
-                Cada indicação aprovada pode render até R$ 1.500.
-              </p>
+          <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-3">
+            <div className="rounded-xl bg-[#015022] px-4 md:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 rounded-lg border border-white/30 grid place-items-center text-white">
+                  <Users className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-white font-semibold leading-tight">Tem alguém para indicar?</p>
+                  <p className="text-white/90 text-sm mt-0.5">Quanto mais você indica, mais você ganha.</p>
+                </div>
+              </div>
+              <Button
+                type="button"
+                onClick={() => setShowModal(true)}
+                className="h-11 rounded-xl bg-[#2aad2a] hover:bg-[#249824] text-white font-semibold px-5"
+              >
+                <Plus className="h-5 w-5 mr-1" />
+                Nova indicação
+              </Button>
             </div>
-            <Button
-              size="lg"
-              variant="secondary"
-              onClick={() => setShowModal(true)}
-              className="rounded-xl h-12 px-6 font-semibold bg-card text-foreground hover:bg-card/90"
+
+            <Link
+              to="/indicacoes"
+              className="rounded-xl border border-[#0c6a3b]/35 bg-white px-5 py-4 flex items-center justify-between text-[#0b5a34] font-semibold hover:bg-[#f8fffb] transition"
             >
-              <Plus className="h-5 w-5 mr-1" />
-              Nova indicação
-            </Button>
+              <span>Ver minhas indicações</span>
+              <ArrowRight className="h-5 w-5" />
+            </Link>
           </div>
 
-          <Section title="Funil de indicações" subtitle="Acompanhe o progresso de cada lead">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {funil.map((f, i) => (
-                <div key={f.label} className="relative">
-                  <div className={`rounded-xl p-5 ${f.color}`}>
-                    <p className={`text-xs font-semibold ${f.text} opacity-80`}>{f.label}</p>
-                    <p className={`text-3xl font-bold ${f.text} mt-1`}>{f.value}</p>
-                  </div>
-                  {i < funil.length - 1 && (
-                    <ArrowUpRight className="hidden md:block absolute -right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground rotate-45 z-10" />
-                  )}
-                </div>
-              ))}
-            </div>
-          </Section>
-
-          <div className="grid lg:grid-cols-3 gap-5">
-            <div className="lg:col-span-2">
-              <Section title="Indicações recentes" subtitle="Suas últimas 8 indicações">
-                <div className="overflow-x-auto -mx-6 lg:-mx-7 px-6 lg:px-7">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-xs text-muted-foreground border-b border-border">
-                        <th className="font-medium pb-3">Nome</th>
-                        <th className="font-medium pb-3">Status</th>
-                        <th className="font-medium pb-3">Valor potencial</th>
-                        <th className="font-medium pb-3">Data</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                      {indicacoes.slice(0, 8).map((i) => (
-                        <tr key={i.id} className="group">
-                          <td className="py-3.5">
-                            <div className="flex items-center gap-3">
-                              <div className="h-8 w-8 rounded-lg bg-muted grid place-items-center text-xs font-semibold text-muted-foreground">
-                                {i.nome_indicado.slice(0, 1)}
-                              </div>
-                              <div>
-                                <p className="font-medium">{i.nome_indicado}</p>
-                                <p className="text-xs text-muted-foreground">{mapTipoDbToUi(i.tipo)}</p>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-3.5">
-                            <StatusBadge status={dbStatusToUi(i.status)} />
-                          </td>
-                          <td className="py-3.5 font-semibold text-primary">
-                            {formatBRL(Number(i.valor_potencial))}
-                          </td>
-                          <td className="py-3.5 text-muted-foreground">{formatDate(i.created_at)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Section>
-            </div>
-
-            <div>
-              <Section title="Últimos ganhos" subtitle="Comissões pagas">
-                <ul className="space-y-3">
-                  {comissoes
-                    .filter((c) => c.status === "pago")
-                    .slice(0, 8)
-                    .map((c) => (
-                      <li
-                        key={c.id}
-                        className="flex items-center justify-between p-3 rounded-xl bg-muted/40 hover:bg-muted transition"
-                      >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="h-9 w-9 shrink-0 rounded-xl bg-primary-light grid place-items-center">
-                            <Wallet className="h-4 w-4 text-primary-dark" />
+          <Section title="Indicações recentes" subtitle="Suas últimas 8 indicações">
+            <div className="overflow-x-auto -mx-6 lg:-mx-7 px-6 lg:px-7">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-muted-foreground border-b border-border">
+                    <th className="font-medium pb-3">Nome</th>
+                    <th className="font-medium pb-3">Status</th>
+                    <th className="font-medium pb-3">Valor potencial</th>
+                    <th className="font-medium pb-3">Data</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {indicacoes.slice(0, 8).map((i) => (
+                    <tr key={i.id} className="group">
+                      <td className="py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div className="h-8 w-8 rounded-lg bg-muted grid place-items-center text-xs font-semibold text-muted-foreground">
+                            {i.nome_indicado.slice(0, 1)}
                           </div>
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium truncate">Comissão #{c.indicacao_id}</p>
-                            <p className="text-xs text-muted-foreground">
-                              Pago · {formatDate(c.created_at)}
-                            </p>
+                          <div>
+                            <p className="font-medium">{i.nome_indicado}</p>
+                            <p className="text-xs text-muted-foreground">{mapTipoDbToUi(i.tipo)}</p>
                           </div>
                         </div>
-                        <span className="text-sm font-bold text-primary shrink-0">
-                          + {formatBRL(Number(c.valor))}
-                        </span>
-                      </li>
-                    ))}
-                  {comissoes.filter((c) => c.status === "pago").length === 0 && (
-                    <li className="text-sm text-muted-foreground py-4 text-center">
-                      Nenhuma comissão paga ainda.
-                    </li>
-                  )}
-                </ul>
-              </Section>
+                      </td>
+                      <td className="py-3.5">
+                        <StatusBadge status={dbStatusToUi(i.status)} />
+                      </td>
+                      <td className="py-3.5 font-semibold text-primary">
+                        {formatBRL(Number(i.valor_potencial))}
+                      </td>
+                      <td className="py-3.5 text-muted-foreground">{formatDate(i.created_at)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
+          </Section>
 
           <div className="grid lg:grid-cols-3 gap-5">
             <div className="lg:col-span-2">
@@ -414,27 +419,31 @@ function Dashboard() {
 function StatCard({
   label,
   value,
-  tone,
-  trend,
-  cta,
+  icon: Icon,
+  iconWrapClassName,
+  valueClassName,
+  footerLabel,
+  footerContent,
 }: {
   label: string;
   value: string;
-  tone: "primary" | "warning";
-  trend: string;
-  cta?: boolean;
+  icon: React.ComponentType<{ className?: string }>;
+  iconWrapClassName: string;
+  valueClassName: string;
+  footerLabel: string;
+  footerContent?: React.ReactNode;
 }) {
-  const valueColor = tone === "primary" ? "text-primary" : "text-warning-foreground";
   return (
-    <div className="rounded-2xl bg-card border border-border shadow-card p-5 hover:shadow-card-hover transition">
-      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</p>
-      <p className={`text-3xl font-bold mt-2 ${valueColor}`}>{value}</p>
-      <p className="text-xs text-muted-foreground mt-2">{trend}</p>
-      {cta && (
-        <button type="button" className="mt-3 text-xs font-semibold text-primary hover:underline">
-          Solicitar saque →
-        </button>
-      )}
+    <div className="rounded-xl border border-zinc-200 bg-white p-4 md:p-5">
+      <div className="flex items-center gap-3">
+        <div className={`h-8 w-8 shrink-0 rounded-full grid place-items-center ${iconWrapClassName}`}>
+          <Icon className="h-4 w-4" />
+        </div>
+        <p className="text-[15px] font-medium text-zinc-900">{label}</p>
+      </div>
+      <p className={`mt-2 text-[29px] leading-none font-bold ${valueClassName}`}>{value}</p>
+      <p className="mt-2 text-xs text-zinc-500">{footerLabel}</p>
+      {footerContent && <div className="mt-2 text-xs font-medium">{footerContent}</div>}
     </div>
   );
 }

@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as PosCadastroRouteImport } from './routes/pos-cadastro'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as IndicacoesRouteImport } from './routes/indicacoes'
 import { Route as IndicacaoConfirmacaoRouteImport } from './routes/indicacao-confirmacao'
 import { Route as DashboardRouteImport } from './routes/dashboard'
 import { Route as ConfirmacaoCadastroRouteImport } from './routes/confirmacao-cadastro'
@@ -32,6 +33,11 @@ const OnboardingRoute = OnboardingRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const IndicacoesRoute = IndicacoesRouteImport.update({
+  id: '/indicacoes',
+  path: '/indicacoes',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndicacaoConfirmacaoRoute = IndicacaoConfirmacaoRouteImport.update({
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/confirmacao-cadastro': typeof ConfirmacaoCadastroRoute
   '/dashboard': typeof DashboardRoute
   '/indicacao-confirmacao': typeof IndicacaoConfirmacaoRoute
+  '/indicacoes': typeof IndicacoesRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/pos-cadastro': typeof PosCadastroRoute
@@ -83,6 +90,7 @@ export interface FileRoutesByTo {
   '/confirmacao-cadastro': typeof ConfirmacaoCadastroRoute
   '/dashboard': typeof DashboardRoute
   '/indicacao-confirmacao': typeof IndicacaoConfirmacaoRoute
+  '/indicacoes': typeof IndicacoesRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/pos-cadastro': typeof PosCadastroRoute
@@ -95,6 +103,7 @@ export interface FileRoutesById {
   '/confirmacao-cadastro': typeof ConfirmacaoCadastroRoute
   '/dashboard': typeof DashboardRoute
   '/indicacao-confirmacao': typeof IndicacaoConfirmacaoRoute
+  '/indicacoes': typeof IndicacoesRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
   '/pos-cadastro': typeof PosCadastroRoute
@@ -108,6 +117,7 @@ export interface FileRouteTypes {
     | '/confirmacao-cadastro'
     | '/dashboard'
     | '/indicacao-confirmacao'
+    | '/indicacoes'
     | '/login'
     | '/onboarding'
     | '/pos-cadastro'
@@ -119,6 +129,7 @@ export interface FileRouteTypes {
     | '/confirmacao-cadastro'
     | '/dashboard'
     | '/indicacao-confirmacao'
+    | '/indicacoes'
     | '/login'
     | '/onboarding'
     | '/pos-cadastro'
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '/confirmacao-cadastro'
     | '/dashboard'
     | '/indicacao-confirmacao'
+    | '/indicacoes'
     | '/login'
     | '/onboarding'
     | '/pos-cadastro'
@@ -142,6 +154,7 @@ export interface RootRouteChildren {
   ConfirmacaoCadastroRoute: typeof ConfirmacaoCadastroRoute
   DashboardRoute: typeof DashboardRoute
   IndicacaoConfirmacaoRoute: typeof IndicacaoConfirmacaoRoute
+  IndicacoesRoute: typeof IndicacoesRoute
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
   PosCadastroRoute: typeof PosCadastroRoute
@@ -168,6 +181,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/indicacoes': {
+      id: '/indicacoes'
+      path: '/indicacoes'
+      fullPath: '/indicacoes'
+      preLoaderRoute: typeof IndicacoesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/indicacao-confirmacao': {
@@ -222,6 +242,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConfirmacaoCadastroRoute: ConfirmacaoCadastroRoute,
   DashboardRoute: DashboardRoute,
   IndicacaoConfirmacaoRoute: IndicacaoConfirmacaoRoute,
+  IndicacoesRoute: IndicacoesRoute,
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
   PosCadastroRoute: PosCadastroRoute,
