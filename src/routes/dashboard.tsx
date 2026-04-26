@@ -1,4 +1,4 @@
-import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -31,26 +31,20 @@ import {
 import { formatBRL, formatDate } from "@/lib/format";
 import { fetchUsuarioRow } from "@/lib/usuario-profile";
 import type { Tables } from "@/lib/supabase/database.types";
+import { RequireAuth } from "@/components/auth/RequireAuth";
 
 export const Route = createFileRoute("/dashboard")({
-  beforeLoad: async ({ location }) => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) {
-      throw redirect({
-        to: "/login",
-        search: { redirect: `${location.pathname}${location.searchStr}` },
-      });
-    }
-    const { data: perfil } = await supabase.from("usuarios").select("id").maybeSingle();
-    if (!perfil) {
-      throw redirect({ to: "/pos-cadastro" });
-    }
-  },
   head: () => ({ meta: [{ title: "Dashboard — IndicaPro" }] }),
-  component: Dashboard,
+  component: DashboardRouteComponent,
 });
+
+function DashboardRouteComponent() {
+  return (
+    <RequireAuth>
+      <Dashboard />
+    </RequireAuth>
+  );
+}
 
 const navItems = [
   { label: "Visão geral", icon: LayoutDashboard, active: true },
@@ -408,7 +402,7 @@ function Dashboard() {
           onClose={() => setShowModal(false)}
           onSent={(id) => {
             setShowModal(false);
-            navigate({ to: "/confirmacao", search: { indicacaoId: id } });
+            navigate({ to: "/indicacao-confirmacao", search: { indicacaoId: id } });
           }}
           queryClient={queryClient}
         />

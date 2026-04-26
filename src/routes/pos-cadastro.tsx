@@ -1,4 +1,4 @@
-import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Send, Sparkles } from "lucide-react";
@@ -9,24 +9,22 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/lib/supabase/client";
 import { mapTipoToDb, type IndicacaoTipo } from "@/lib/indicacao-domain";
 import { upsertUsuarioProfile, fetchUsuarioRow } from "@/lib/usuario-profile";
+import { RequireAuth } from "@/components/auth/RequireAuth";
 
 export const Route = createFileRoute("/pos-cadastro")({
-  beforeLoad: async ({ location }) => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) {
-      throw redirect({
-        to: "/login",
-        search: { redirect: `${location.pathname}${location.searchStr}` },
-      });
-    }
-  },
   head: () => ({
     meta: [{ title: "Sua primeira indicação — IndicaPro" }],
   }),
-  component: PosCadastro,
+  component: PosCadastroRouteComponent,
 });
+
+function PosCadastroRouteComponent() {
+  return (
+    <RequireAuth>
+      <PosCadastro />
+    </RequireAuth>
+  );
+}
 
 function PosCadastro() {
   const navigate = useNavigate();
@@ -71,7 +69,7 @@ function PosCadastro() {
     onSuccess: (id) => {
       void queryClient.invalidateQueries({ queryKey: ["indicacoes"] });
       void queryClient.invalidateQueries({ queryKey: ["atividades"] });
-      navigate({ to: "/confirmacao", search: { indicacaoId: id } });
+      navigate({ to: "/indicacao-confirmacao", search: { indicacaoId: id } });
     },
     onError: (e: Error) => toast.error(e.message),
   });

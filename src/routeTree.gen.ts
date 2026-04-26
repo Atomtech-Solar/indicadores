@@ -10,8 +10,11 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PosCadastroRouteImport } from './routes/pos-cadastro'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as IndicacaoConfirmacaoRouteImport } from './routes/indicacao-confirmacao'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as ConfirmacaoCadastroRouteImport } from './routes/confirmacao-cadastro'
 import { Route as ConfirmacaoRouteImport } from './routes/confirmacao'
 import { Route as CadastroRouteImport } from './routes/cadastro'
 import { Route as IndexRouteImport } from './routes/index'
@@ -21,14 +24,29 @@ const PosCadastroRoute = PosCadastroRouteImport.update({
   path: '/pos-cadastro',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const IndicacaoConfirmacaoRoute = IndicacaoConfirmacaoRouteImport.update({
+  id: '/indicacao-confirmacao',
+  path: '/indicacao-confirmacao',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConfirmacaoCadastroRoute = ConfirmacaoCadastroRouteImport.update({
+  id: '/confirmacao-cadastro',
+  path: '/confirmacao-cadastro',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ConfirmacaoRoute = ConfirmacaoRouteImport.update({
@@ -51,16 +69,22 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/cadastro': typeof CadastroRoute
   '/confirmacao': typeof ConfirmacaoRoute
+  '/confirmacao-cadastro': typeof ConfirmacaoCadastroRoute
   '/dashboard': typeof DashboardRoute
+  '/indicacao-confirmacao': typeof IndicacaoConfirmacaoRoute
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRoute
   '/pos-cadastro': typeof PosCadastroRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/cadastro': typeof CadastroRoute
   '/confirmacao': typeof ConfirmacaoRoute
+  '/confirmacao-cadastro': typeof ConfirmacaoCadastroRoute
   '/dashboard': typeof DashboardRoute
+  '/indicacao-confirmacao': typeof IndicacaoConfirmacaoRoute
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRoute
   '/pos-cadastro': typeof PosCadastroRoute
 }
 export interface FileRoutesById {
@@ -68,8 +92,11 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/cadastro': typeof CadastroRoute
   '/confirmacao': typeof ConfirmacaoRoute
+  '/confirmacao-cadastro': typeof ConfirmacaoCadastroRoute
   '/dashboard': typeof DashboardRoute
+  '/indicacao-confirmacao': typeof IndicacaoConfirmacaoRoute
   '/login': typeof LoginRoute
+  '/onboarding': typeof OnboardingRoute
   '/pos-cadastro': typeof PosCadastroRoute
 }
 export interface FileRouteTypes {
@@ -78,24 +105,33 @@ export interface FileRouteTypes {
     | '/'
     | '/cadastro'
     | '/confirmacao'
+    | '/confirmacao-cadastro'
     | '/dashboard'
+    | '/indicacao-confirmacao'
     | '/login'
+    | '/onboarding'
     | '/pos-cadastro'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/cadastro'
     | '/confirmacao'
+    | '/confirmacao-cadastro'
     | '/dashboard'
+    | '/indicacao-confirmacao'
     | '/login'
+    | '/onboarding'
     | '/pos-cadastro'
   id:
     | '__root__'
     | '/'
     | '/cadastro'
     | '/confirmacao'
+    | '/confirmacao-cadastro'
     | '/dashboard'
+    | '/indicacao-confirmacao'
     | '/login'
+    | '/onboarding'
     | '/pos-cadastro'
   fileRoutesById: FileRoutesById
 }
@@ -103,8 +139,11 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CadastroRoute: typeof CadastroRoute
   ConfirmacaoRoute: typeof ConfirmacaoRoute
+  ConfirmacaoCadastroRoute: typeof ConfirmacaoCadastroRoute
   DashboardRoute: typeof DashboardRoute
+  IndicacaoConfirmacaoRoute: typeof IndicacaoConfirmacaoRoute
   LoginRoute: typeof LoginRoute
+  OnboardingRoute: typeof OnboardingRoute
   PosCadastroRoute: typeof PosCadastroRoute
 }
 
@@ -117,6 +156,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof PosCadastroRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -124,11 +170,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/indicacao-confirmacao': {
+      id: '/indicacao-confirmacao'
+      path: '/indicacao-confirmacao'
+      fullPath: '/indicacao-confirmacao'
+      preLoaderRoute: typeof IndicacaoConfirmacaoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/dashboard': {
       id: '/dashboard'
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/confirmacao-cadastro': {
+      id: '/confirmacao-cadastro'
+      path: '/confirmacao-cadastro'
+      fullPath: '/confirmacao-cadastro'
+      preLoaderRoute: typeof ConfirmacaoCadastroRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/confirmacao': {
@@ -159,8 +219,11 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CadastroRoute: CadastroRoute,
   ConfirmacaoRoute: ConfirmacaoRoute,
+  ConfirmacaoCadastroRoute: ConfirmacaoCadastroRoute,
   DashboardRoute: DashboardRoute,
+  IndicacaoConfirmacaoRoute: IndicacaoConfirmacaoRoute,
   LoginRoute: LoginRoute,
+  OnboardingRoute: OnboardingRoute,
   PosCadastroRoute: PosCadastroRoute,
 }
 export const routeTree = rootRouteImport

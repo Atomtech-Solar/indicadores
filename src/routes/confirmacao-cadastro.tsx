@@ -6,25 +6,29 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { sendOtpEdge, verifyOtpEdge } from "@/lib/auth-edge";
 
-type ConfirmacaoSearch = { email?: string; redirect?: string };
+type ConfirmacaoCadastroSearch = { email?: string; redirect?: string };
+type RegisterDraft = { email: string; nome: string; whatsapp: string };
+
 const OTP_LENGTH = 6;
 const RESEND_SECONDS = 30;
+const REGISTER_DRAFT_KEY = "register_otp_draft";
 
-export const Route = createFileRoute("/confirmacao")({
-  validateSearch: (raw: Record<string, unknown>): ConfirmacaoSearch => ({
+export const Route = createFileRoute("/confirmacao-cadastro")({
+  validateSearch: (raw: Record<string, unknown>): ConfirmacaoCadastroSearch => ({
     email: typeof raw.email === "string" ? raw.email : undefined,
     redirect: typeof raw.redirect === "string" ? raw.redirect : undefined,
   }),
   head: () => ({
-    meta: [{ title: "Confirmar código — ATOM TECH" }],
+    meta: [{ title: "Confirmar cadastro — ATOM TECH" }],
   }),
-  component: ConfirmacaoOTP,
+  component: ConfirmacaoCadastroOTP,
 });
 
-function ConfirmacaoOTP() {
+function ConfirmacaoCadastroOTP() {
   const navigate = useNavigate();
   const { email: emailParam, redirect } = Route.useSearch();
   const [email, setEmail] = useState(emailParam ?? "");
+  const [registerDraft, setRegisterDraft] = useState<RegisterDraft | null>(null);
   const [otpDigits, setOtpDigits] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -38,6 +42,20 @@ function ConfirmacaoOTP() {
   useEffect(() => {
     otpRefs.current[0]?.focus();
   }, []);
+
+  useEffect(() => {
+    const rawDraft = sessionStorage.getItem(REGISTER_DRAFT_KEY);
+    if (!rawDraft) return;
+    try {
+      const parsed = JSON.parse(rawDraft) as RegisterDraft;
+      setRegisterDraft(parsed);
+      if (!emailParam && parsed.email) {
+        setEmail(parsed.email);
+      }
+    } catch {
+      sessionStorage.removeItem(REGISTER_DRAFT_KEY);
+    }
+  }, [emailParam]);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -85,12 +103,15 @@ function ConfirmacaoOTP() {
       const result = await verifyOtpEdge({
         email: email.trim(),
         code: otpCode,
+        nome: registerDraft?.nome,
+        whatsapp: registerDraft?.whatsapp,
       });
       if (!result.success) throw new Error("VERIFY_OTP_FAILED");
 
+      sessionStorage.removeItem(REGISTER_DRAFT_KEY);
       setSuccessMessage("Código validado com sucesso.");
       void redirect;
-      navigate({ to: "/onboarding" });
+      navigate({ to: "/login", search: { email: email.trim(), redirect } });
     } catch {
       setErrorMessage("Código inválido. Confira e tente novamente.");
     } finally {
