@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import {
   ArrowRight,
   UserPlus,
@@ -18,29 +19,37 @@ import {
   Linkedin,
   Instagram,
   Twitter,
-  Zap,
-  Sparkles,
+  Menu,
+  X,
   MessageCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import celularHeroImage from "../../img/Celular-Hero.png";
-import fechadoImage from "../../img/Fechado.png";
-import ctaCadastroImage from "../../img/CTA-Cadastro.png";
 import ativoLogoImage from "../../img/Ativo 1.png";
+
+const CELULAR_HERO_URL = "https://i.ibb.co/Lzb68BpJ/Celular-Hero.png";
+const CTA_CADASTRO_URL = "https://i.ibb.co/3YF41xdm/CTA-Cadastro.png";
+const FECHADO_URL = "https://i.ibb.co/RTdgWXb3/Fechado.png";
+const NAV_LINKS = [
+  { label: "Como funciona", href: "#como-funciona" },
+  { label: "Resultados", href: "#prova" },
+  { label: "Por que funciona", href: "#objeções" },
+  { label: "Dúvidas", href: "#duvidas" },
+  { label: "Começar", href: "#cta-final" },
+];
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "IndicaPro — Ganhe dinheiro indicando pessoas ou empresas" },
+      { title: "ATOM TECH — Ganhe dinheiro indicando pessoas ou empresas" },
       {
         name: "description",
         content:
-          "Indique pessoas ou empresas e receba comissão por cada negócio fechado. Simples, rápido e transparente.",
+          "Indique pessoas ou empresas com a ATOM TECH e receba comissão por cada negócio fechado. Simples, rápido e transparente.",
       },
-      { property: "og:title", content: "IndicaPro — Ganhe indicando" },
+      { property: "og:title", content: "ATOM TECH — Ganhe indicando" },
       {
         property: "og:description",
-        content: "Você indica. Nós fechamos. Você recebe comissão.",
+        content: "Você indica. A ATOM TECH fecha. Você recebe comissão.",
       },
     ],
   }),
@@ -48,11 +57,20 @@ export const Route = createFileRoute("/")({
 });
 
 function Landing() {
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    document.body.style.overflow = isMobileMenuOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isMobileMenuOpen]);
+
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
       <header className="sticky top-0 z-30 backdrop-blur-md bg-background/70 border-b border-border">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center">
             <img
               src={ativoLogoImage}
@@ -60,14 +78,14 @@ function Landing() {
               className="h-10 w-auto object-contain"
             />
           </Link>
-          <nav className="hidden md:flex items-center gap-8 text-sm text-muted-foreground">
-            <a href="#como-funciona" className="hover:text-foreground transition">Como funciona</a>
-            <a href="#prova" className="hover:text-foreground transition">Resultados</a>
-            <a href="#objeções" className="hover:text-foreground transition">Por que funciona</a>
-            <a href="#duvidas" className="hover:text-foreground transition">Dúvidas</a>
-            <a href="#cta-final" className="hover:text-foreground transition">Começar</a>
+          <nav className="hidden min-[901px]:flex items-center gap-8 text-sm text-muted-foreground">
+            {NAV_LINKS.map((item) => (
+              <a key={item.href} href={item.href} className="hover:text-foreground transition">
+                {item.label}
+              </a>
+            ))}
           </nav>
-          <div className="flex items-center gap-2">
+          <div className="hidden min-[901px]:flex items-center gap-2">
             <Link to="/login">
               <Button variant="ghost" className="rounded-xl text-muted-foreground">
                 Entrar
@@ -79,24 +97,88 @@ function Landing() {
               </Button>
             </Link>
           </div>
+          <button
+            type="button"
+            className="min-[901px]:hidden inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border text-foreground transition hover:bg-muted"
+            onClick={() => setIsMobileMenuOpen(true)}
+            aria-label="Abrir menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
         </div>
       </header>
 
+      <div
+        className={`min-[901px]:hidden fixed inset-0 z-40 transition-all duration-300 ${
+          isMobileMenuOpen ? "pointer-events-auto" : "pointer-events-none"
+        }`}
+      >
+        <button
+          type="button"
+          aria-label="Fechar menu"
+          className={`absolute inset-0 bg-black/35 transition-opacity duration-300 ${
+            isMobileMenuOpen ? "opacity-100" : "opacity-0"
+          }`}
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+        <aside
+          className={`absolute right-0 top-0 h-full w-[84vw] max-w-sm bg-white shadow-2xl transition-transform duration-300 ${
+            isMobileMenuOpen ? "translate-x-0" : "translate-x-full"
+          }`}
+        >
+          <div className="h-16 px-4 border-b border-border flex items-center justify-between">
+            <img src={ativoLogoImage} alt="ATOM TECH" className="h-9 w-auto object-contain" />
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-foreground"
+              onClick={() => setIsMobileMenuOpen(false)}
+              aria-label="Fechar menu"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <nav className="px-4 py-5 flex flex-col gap-1">
+            {NAV_LINKS.map((item) => (
+              <a
+                key={item.href}
+                href={item.href}
+                className="rounded-lg px-3 py-3 text-base font-medium text-[#1F2937] hover:bg-green-50 hover:text-[#1B8F3A] transition"
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                {item.label}
+              </a>
+            ))}
+          </nav>
+          <div className="px-4 pb-6 grid gap-3">
+            <Link to="/login" onClick={() => setIsMobileMenuOpen(false)}>
+              <Button variant="outline" className="w-full rounded-xl">
+                Entrar
+              </Button>
+            </Link>
+            <Link to="/cadastro" onClick={() => setIsMobileMenuOpen(false)}>
+              <Button className="w-full rounded-xl bg-[#1B8F3A] hover:bg-[#177A33]">
+                Começar
+              </Button>
+            </Link>
+          </div>
+        </aside>
+      </div>
+
       {/* Hero */}
-      <section className="relative bg-white overflow-hidden">
+      <section className="relative bg-white overflow-hidden max-[900px]:min-h-[calc(100vh-64px)]">
         <div className="absolute inset-0 -z-10 opacity-50"
              style={{ backgroundImage: "radial-gradient(circle at 20% 20%, color-mix(in oklab, var(--primary) 18%, transparent), transparent 50%)" }} />
-        <div className="max-w-7xl mx-auto px-6 py-20 md:py-28 grid lg:grid-cols-2 gap-12 items-center">
-          <div className="px-2 py-4 md:px-0 md:py-2">
+        <div className="max-w-7xl mx-auto px-6 py-20 md:py-28 grid lg:grid-cols-2 gap-12 items-center max-[900px]:min-h-[calc(100vh-64px)] max-[900px]:place-content-center max-[900px]:justify-items-center">
+          <div className="px-2 py-4 md:px-0 md:py-2 max-[900px]:text-center">
             <div className="inline-flex items-center justify-center rounded-full border border-[#A5D6A7] bg-[#E8F5E9] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2E7D32] mb-6">
               Sem investimento • Sem experiência • <span className="text-[#1B8F3A]">100% online</span>
             </div>
-            <h1 className="text-3xl md:text-5xl lg:text-[56px] font-black leading-[0.98] tracking-[-0.015em] uppercase">
+            <h1 className="text-3xl md:text-5xl lg:text-[56px] max-[900px]:text-5xl font-black leading-[0.98] tracking-[-0.015em] uppercase">
               <span className="block text-[#111111]">Ganhe dinheiro</span>
               <span className="block text-[#1B8F3A]">Indicando pessoas</span>
               <span className="block text-[#1B8F3A]">ou empresas</span>
             </h1>
-            <div className="mt-5 relative inline-flex items-center pr-16 md:pr-20">
+            <div className="mt-5 relative inline-flex items-center pr-16 md:pr-20 max-[900px]:pr-14 max-[900px]:mx-auto">
               <p className="inline-flex -rotate-[1deg] rounded-md bg-[#FBC02D] px-4 py-2 text-sm md:text-xl font-black uppercase leading-none text-black shadow-sm">
                 Qualquer pessoa pode começar!
               </p>
@@ -132,12 +214,12 @@ function Landing() {
                 </svg>
               </span>
             </div>
-            <p className="mt-6 text-base md:text-xl leading-snug text-[#333333] max-w-xl">
+            <p className="mt-6 text-base md:text-xl leading-snug text-[#333333] max-w-xl max-[900px]:mx-auto">
               Você indica, nós fechamos e você recebe <span className="font-semibold text-[#1B8F3A]">comissão</span> por cada negócio fechado.
               <br />
               <span className="text-[#666666] text-base md:text-lg">Simples, transparente e sem precisar vender.</span>
             </p>
-            <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:items-center">
+            <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:items-center max-[900px]:justify-center max-[900px]:items-center">
               <Link to="/cadastro">
                 <Button
                   size="lg"
@@ -158,17 +240,17 @@ function Landing() {
                 </Button>
               </a>
             </div>
-            <div className="mt-8 flex items-center gap-6 text-sm text-muted-foreground">
+            <div className="mt-8 flex items-center gap-6 text-sm text-muted-foreground max-[900px]:justify-center">
               <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-primary" /> Cadastro grátis</div>
               <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-primary" /> Pagamento garantido</div>
             </div>
           </div>
 
-          <div className="relative flex justify-center lg:justify-end">
+          <div className="relative flex justify-center lg:justify-end max-[900px]:justify-center max-[900px]:items-center max-[900px]:w-full">
             <img
-              src={celularHeroImage}
+              src={CELULAR_HERO_URL}
               alt="Prévia do aplicativo no celular"
-              className="w-full max-w-[420px] h-auto object-contain"
+              className="w-full max-w-[420px] max-[900px]:max-w-[500px] h-auto object-contain"
             />
           </div>
         </div>
@@ -176,13 +258,13 @@ function Landing() {
 
       <section className="px-4 md:px-6 py-5 bg-[#FAFAFA] border-y border-black/5">
         <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_1.35fr] gap-4 md:gap-5 items-center">
+          <div className="grid grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_1.35fr] gap-4 md:gap-5 items-center justify-items-center lg:justify-items-stretch">
             <BenefitItem icon={Users} text="Para qualquer pessoa" className="lg:-translate-y-1" />
             <BenefitItem icon={Handshake} text="Indique pessoas ou empresas" className="lg:translate-y-1" />
             <BenefitItem icon={DollarSign} text="Receba comissão por cada negócio" className="lg:-translate-y-0.5" />
             <BenefitItem icon={ShieldCheck} text="Total segurança e transparência" className="lg:translate-y-1.5" />
 
-            <div className="lg:ml-2 flex items-center gap-3 rounded-2xl px-3 py-2">
+            <div className="col-span-2 lg:col-span-1 justify-self-center lg:justify-self-auto lg:ml-2 flex items-center gap-3 rounded-2xl px-3 py-2">
               <div className="h-11 w-11 rounded-full bg-[#1B8F3A] grid place-items-center shrink-0">
                 <ShieldCheck className="h-6 w-6 text-white" />
               </div>
@@ -309,9 +391,9 @@ function Landing() {
       </section>
 
       {/* Objeções */}
-      <section id="objeções" className="py-20 px-6 bg-[#1B8F3A]/8">
-        <div className="max-w-6xl mx-auto grid lg:grid-cols-[1fr_1.1fr] gap-10 lg:gap-12 items-start">
-          <div>
+      <section id="objeções" className="py-20 px-4 md:px-6 bg-[#1B8F3A]/8">
+        <div className="max-w-6xl mx-auto grid lg:grid-cols-[1fr_1.1fr] gap-10 lg:gap-12 items-center justify-items-center">
+          <div className="text-center">
             <span className="inline-flex rounded-full border border-[#A5D6A7] bg-[#E8F5E9] px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#2E7D32]">
               Por que funciona
             </span>
@@ -320,14 +402,14 @@ function Landing() {
               <br />
               por indicações?
             </h2>
-            <p className="mt-5 text-lg md:text-2xl leading-snug text-[#222222] max-w-xl">
+            <p className="mt-5 text-lg md:text-2xl leading-snug text-[#222222] max-w-xl mx-auto">
               Indicações são o canal mais eficiente de aquisição. Você conecta pessoas interessadas, nós fechamos o negócio e compartilhamos o lucro com quem gerou a oportunidade.
             </p>
           </div>
 
-          <div className="flex justify-center lg:justify-end">
+          <div className="flex justify-center">
             <img
-              src={fechadoImage}
+              src={FECHADO_URL}
               alt="Negócio fechado"
               className="w-full max-w-[520px] h-auto object-contain"
             />
@@ -335,7 +417,7 @@ function Landing() {
         </div>
       </section>
 
-      <section id="duvidas" className="py-20 px-6 bg-white">
+      <section id="duvidas" className="py-20 px-4 md:px-6 bg-white">
         <div className="max-w-6xl mx-auto">
           <div className="text-center">
             <span className="inline-flex rounded-full border border-[#A5D6A7] bg-[#E8F5E9] px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-[#2E7D32]">
@@ -371,8 +453,8 @@ function Landing() {
           <div className="absolute top-20 right-[10%] h-40 w-40 rounded-full bg-white/10 blur-2xl" />
           <div className="absolute top-14 left-[42%] h-24 w-24 rounded-full border border-[#84CC16]/20" />
           <div className="absolute bottom-12 right-[30%] h-16 w-16 rounded-full border border-white/20" />
-          <div className="relative grid lg:grid-cols-2 gap-8 items-center">
-            <div className="text-white">
+          <div className="relative flex items-center justify-center">
+            <div className="text-white text-center">
               <span className="inline-flex rounded-full border border-[#84CC16] bg-transparent px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-[#84CC16]">
                 Chegou sua vez
               </span>
@@ -381,12 +463,12 @@ function Landing() {
                 <br />
                 sua <span className="text-[#84CC16]">primeira indicação</span>
               </h2>
-              <p className="mt-5 inline-flex items-center gap-2 text-lg text-white/90">
+              <p className="mt-5 inline-flex items-center justify-center gap-2 text-lg text-white/90">
                 <Clock3 className="h-5 w-5 text-white" />
                 Leva menos de 1 minuto para começar
               </p>
 
-              <div className="mt-7 inline-flex flex-col items-center">
+              <div className="mt-7 flex flex-col items-center gap-4">
                 <Link to="/cadastro" className="inline-block">
                   <Button
                     size="lg"
@@ -396,20 +478,13 @@ function Landing() {
                     <ArrowRight className="ml-3 h-5 w-5" />
                   </Button>
                 </Link>
-                <a href="#como-funciona" className="mt-4 inline-flex items-center gap-2 text-lg font-medium text-white/90 hover:text-white">
+                <a href="#como-funciona" className="inline-flex items-center gap-2 text-lg font-medium text-white/90 hover:text-white">
                   Ver como funciona
                   <ArrowRight className="h-4 w-4" />
                 </a>
               </div>
             </div>
 
-            <div className="flex justify-center lg:justify-end">
-              <img
-                src={ctaCadastroImage}
-                alt="Prévia de cadastro e comissão"
-                className="w-full max-w-[640px] h-auto object-contain"
-              />
-            </div>
           </div>
         </div>
       </section>
@@ -435,7 +510,7 @@ function ProcessStepCard({
   badge?: string;
 }) {
   return (
-    <div className="relative rounded-[18px] bg-white p-7 md:p-8 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.45)] min-h-[230px] flex flex-col items-center text-center">
+    <div className="relative w-full max-w-[320px] mx-auto aspect-square rounded-[18px] bg-white p-6 md:p-7 shadow-[0_12px_28px_-22px_rgba(15,23,42,0.45)] flex flex-col items-center justify-center text-center">
       {badge && (
         <span className="absolute -top-3 right-3 md:right-4 inline-flex items-center rounded-full bg-[#1B8F3A] px-3 py-1 text-[11px] font-semibold text-white rotate-[-2deg]">
           {badge}
@@ -447,7 +522,7 @@ function ProcessStepCard({
       <div className="mt-3 h-7 w-7 rounded-full bg-[#1B8F3A] text-white text-sm font-bold grid place-items-center">
         {n}
       </div>
-      <h3 className={`mt-3 text-[30px] font-semibold ${highlight ? "text-[#1B8F3A]" : "text-[#1F2937]"}`}>{title}</h3>
+      <h3 className={`mt-3 text-2xl md:text-[30px] font-semibold ${highlight ? "text-[#1B8F3A]" : "text-[#1F2937]"}`}>{title}</h3>
       <p className="mt-2 text-sm md:text-base text-[#666666] leading-snug">{desc}</p>
     </div>
   );
@@ -468,11 +543,11 @@ function BenefitItem({
   const secondLine = words.slice(pivot).join(" ");
 
   return (
-    <div className={`flex items-center gap-3 ${className ?? ""}`}>
+    <div className={`flex items-center gap-3 max-lg:justify-center max-lg:w-full ${className ?? ""}`}>
       <div className="h-11 w-11 rounded-full bg-[#F1F3F4] grid place-items-center shrink-0">
         <Icon className="h-6 w-6 text-[#1B8F3A]" />
       </div>
-      <p className="text-sm text-[#333333] font-medium leading-tight">
+      <p className="text-sm text-[#333333] font-medium leading-tight max-lg:text-center">
         <span className="block">{firstLine}</span>
         <span className="block">{secondLine}</span>
       </p>
@@ -498,8 +573,8 @@ function ResultCard({
       <div className="mx-auto h-14 w-14 rounded-full bg-[#BFD1C7] grid place-items-center mb-4">
         <Icon className="h-7 w-7 text-[#0E7A33]" />
       </div>
-      {value && <p className="text-[28px] md:text-[30px] leading-none font-semibold text-[#10A34A]">{value}</p>}
-      <p className={`mt-1 text-[30px] md:text-[32px] leading-none font-semibold ${emphasizeTitle ? "text-[#10A34A]" : "text-[#111111]"}`}>
+      {value && <p className="text-2xl md:text-[30px] leading-none font-semibold text-[#10A34A]">{value}</p>}
+      <p className={`mt-1 text-2xl md:text-[32px] leading-none font-semibold ${emphasizeTitle ? "text-[#10A34A]" : "text-[#111111]"}`}>
         {title}
       </p>
       <p className="mt-3 text-sm text-[#666666] leading-snug">{description}</p>
@@ -537,7 +612,7 @@ function FaqCard({
       <div className="mx-auto h-16 w-16 rounded-full bg-[#E8F5E9] grid place-items-center">
         <Icon className="h-8 w-8 text-[#1B8F3A]" />
       </div>
-      <p className="mt-5 text-[32px] leading-tight font-semibold text-[#111111] text-center">{question}</p>
+      <p className="mt-5 text-2xl md:text-[32px] leading-tight font-semibold text-[#111111] text-center">{question}</p>
       <div className="my-5 h-px bg-black/10" />
       <div className="flex items-start gap-2.5">
         <CheckCircle2 className="h-5 w-5 mt-0.5 text-[#1B8F3A] shrink-0" />
@@ -585,12 +660,23 @@ function SiteFooter() {
 
           <FooterLinkGroup
             title="Empresa"
-            links={["Início", "Sobre nós", "Preços", "Blog", "Detalhes do blog"]}
+            links={[
+              { label: "Como funciona", href: "#como-funciona" },
+              { label: "Resultados", href: "#prova" },
+              { label: "Por que funciona", href: "#objeções" },
+              { label: "Dúvidas", href: "#duvidas" },
+              { label: "Começar", href: "#cta-final" },
+            ]}
           />
 
           <FooterLinkGroup
             title="Produto"
-            links={["Funcionalidades", "Carreiras", "Como funciona", "Contato"]}
+            links={[
+              { label: "Funcionalidades", href: "#" },
+              { label: "Carreiras", href: "#" },
+              { label: "Como funciona", href: "#" },
+              { label: "Contato", href: "#" },
+            ]}
           />
 
           <div>
@@ -629,15 +715,21 @@ function SiteFooter() {
   );
 }
 
-function FooterLinkGroup({ title, links }: { title: string; links: string[] }) {
+function FooterLinkGroup({
+  title,
+  links,
+}: {
+  title: string;
+  links: Array<{ label: string; href: string }>;
+}) {
   return (
     <div>
       <h3 className="text-base font-semibold">{title}</h3>
       <ul className="mt-4 space-y-3">
         {links.map((item) => (
-          <li key={item}>
-            <a href="#" className="text-sm text-gray-500 transition-colors hover:text-green-600">
-              {item}
+          <li key={item.label}>
+            <a href={item.href} className="text-sm text-gray-500 transition-colors hover:text-green-600">
+              {item.label}
             </a>
           </li>
         ))}

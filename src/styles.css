@@ -162,6 +162,7 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+    overflow-x: hidden;
   }
 
   h1,
@@ -169,6 +170,12 @@
   h3,
   h4 {
     letter-spacing: -0.02em;
+  }
+}
+
+@media (max-width: 900px) {
+  section {
+    overflow-x: clip;
   }
 }
 
