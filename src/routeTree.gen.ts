@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as PosCadastroRouteImport } from './routes/pos-cadastro'
+import { Route as PerfilRouteImport } from './routes/perfil'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndicacoesRouteImport } from './routes/indicacoes'
@@ -23,6 +24,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const PosCadastroRoute = PosCadastroRouteImport.update({
   id: '/pos-cadastro',
   path: '/pos-cadastro',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PerfilRoute = PerfilRouteImport.update({
+  id: '/perfil',
+  path: '/perfil',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -81,6 +87,7 @@ export interface FileRoutesByFullPath {
   '/indicacoes': typeof IndicacoesRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/perfil': typeof PerfilRoute
   '/pos-cadastro': typeof PosCadastroRoute
 }
 export interface FileRoutesByTo {
@@ -93,6 +100,7 @@ export interface FileRoutesByTo {
   '/indicacoes': typeof IndicacoesRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/perfil': typeof PerfilRoute
   '/pos-cadastro': typeof PosCadastroRoute
 }
 export interface FileRoutesById {
@@ -106,6 +114,7 @@ export interface FileRoutesById {
   '/indicacoes': typeof IndicacoesRoute
   '/login': typeof LoginRoute
   '/onboarding': typeof OnboardingRoute
+  '/perfil': typeof PerfilRoute
   '/pos-cadastro': typeof PosCadastroRoute
 }
 export interface FileRouteTypes {
@@ -120,6 +129,7 @@ export interface FileRouteTypes {
     | '/indicacoes'
     | '/login'
     | '/onboarding'
+    | '/perfil'
     | '/pos-cadastro'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -132,6 +142,7 @@ export interface FileRouteTypes {
     | '/indicacoes'
     | '/login'
     | '/onboarding'
+    | '/perfil'
     | '/pos-cadastro'
   id:
     | '__root__'
@@ -144,6 +155,7 @@ export interface FileRouteTypes {
     | '/indicacoes'
     | '/login'
     | '/onboarding'
+    | '/perfil'
     | '/pos-cadastro'
   fileRoutesById: FileRoutesById
 }
@@ -157,6 +169,7 @@ export interface RootRouteChildren {
   IndicacoesRoute: typeof IndicacoesRoute
   LoginRoute: typeof LoginRoute
   OnboardingRoute: typeof OnboardingRoute
+  PerfilRoute: typeof PerfilRoute
   PosCadastroRoute: typeof PosCadastroRoute
 }
 
@@ -167,6 +180,13 @@ declare module '@tanstack/react-router' {
       path: '/pos-cadastro'
       fullPath: '/pos-cadastro'
       preLoaderRoute: typeof PosCadastroRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/perfil': {
+      id: '/perfil'
+      path: '/perfil'
+      fullPath: '/perfil'
+      preLoaderRoute: typeof PerfilRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/onboarding': {
@@ -245,6 +265,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndicacoesRoute: IndicacoesRoute,
   LoginRoute: LoginRoute,
   OnboardingRoute: OnboardingRoute,
+  PerfilRoute: PerfilRoute,
   PosCadastroRoute: PosCadastroRoute,
 }
 export const routeTree = rootRouteImport

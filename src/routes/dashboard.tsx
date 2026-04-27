@@ -12,10 +12,13 @@ import {
   Send,
   X,
   LogOut,
+  User,
   CircleDollarSign,
   ChartLine,
   Hourglass,
   PiggyBank,
+  BadgeCheck,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -48,9 +51,9 @@ function DashboardRouteComponent() {
 }
 
 const navItems = [
-  { label: "Visão geral", icon: LayoutDashboard, active: true },
-  { label: "Indicações", icon: Users },
-  { label: "Comissões", icon: Wallet },
+  { key: "visao-geral", label: "Visão geral", icon: LayoutDashboard },
+  { key: "indicacoes", label: "Indicações", icon: Users },
+  { key: "comissoes", label: "Comissões", icon: Wallet },
 ];
 
 function monthKey(iso: string) {
@@ -74,6 +77,12 @@ function Dashboard() {
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [activeTab, setActiveTab] = useState<"visao-geral" | "indicacoes" | "comissoes">("visao-geral");
+  const [comissoesPeriodFilter, setComissoesPeriodFilter] = useState<"7d" | "30d" | "90d">("30d");
+  const [comissoesStatusFilter, setComissoesStatusFilter] = useState<"all" | "pago" | "pendente" | "disponivel">("all");
+  const [funnelFilter, setFunnelFilter] = useState<"today" | "week" | "month" | "custom">("month");
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
 
   const { data: profile } = useQuery({
     queryKey: ["usuario"],
@@ -84,11 +93,11 @@ function Dashboard() {
     queryKey: ["indicacoes"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("indicacoes")
-        .select("*")
+        .from("vw_indicacoes_dashboard")
+        .select("id, nome_indicado, tipo, status, valor_potencial, created_at")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data ?? []) as Tables<"indicacoes">[];
+      return (data ?? []) as Pick<Tables<"indicacoes">, "id" | "nome_indicado" | "tipo" | "status" | "valor_potencial" | "created_at">[];
     },
   });
 
@@ -97,7 +106,7 @@ function Dashboard() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("comissoes")
-        .select("*")
+        .select("id, indicacao_id, usuario_id, valor, status, created_at")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as Tables<"comissoes">[];
@@ -144,7 +153,117 @@ function Dashboard() {
     return months.map((m) => ({ m: m.label, v: byMonth[m.key] ?? 0 }));
   }, [comissoes]);
 
+  const funnelIndicacoes = useMemo(() => {
+    const nowDate = new Date();
+    const startOfToday = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate());
+
+    if (funnelFilter === "today") {
+      return indicacoes.filter((i) => new Date(i.created_at) >= startOfToday);
+    }
+
+    if (funnelFilter === "week") {
+      const startOfWeek = new Date(startOfToday);
+      startOfWeek.setDate(startOfWeek.getDate() - 7);
+      return indicacoes.filter((i) => new Date(i.created_at) >= startOfWeek);
+    }
+
+    if (funnelFilter === "month") {
+      const startOfMonth = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1);
+      return indicacoes.filter((i) => new Date(i.created_at) >= startOfMonth);
+    }
+
+    if (!customStartDate && !customEndDate) return indicacoes;
+
+    const start = customStartDate ? new Date(`${customStartDate}T00:00:00`) : null;
+    const end = customEndDate ? new Date(`${customEndDate}T23:59:59`) : null;
+
+    return indicacoes.filter((i) => {
+      const created = new Date(i.created_at);
+      if (start && created < start) return false;
+      if (end && created > end) return false;
+      return true;
+    });
+  }, [indicacoes, funnelFilter, customStartDate, customEndDate]);
+
+  const localFunnelStats = useMemo(() => {
+    const enviados = funnelIndicacoes.filter((i) => i.status === "enviado").length;
+    const analise = funnelIndicacoes.filter((i) => i.status === "analise").length;
+    const negociacao = funnelIndicacoes.filter((i) => i.status === "negociacao").length;
+    const fechados = funnelIndicacoes.filter((i) => i.status === "fechado").length;
+
+    return { enviados, analise, negociacao, fechados };
+  }, [funnelIndicacoes]);
+
+  const { data: funnelStatsRpc } = useQuery({
+    queryKey: ["indicacoes-funnel", funnelFilter],
+    enabled: activeTab === "indicacoes" && funnelFilter !== "custom",
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_indicacoes_funnel", { period: funnelFilter });
+      if (error) throw error;
+
+      const row = Array.isArray(data) ? data[0] : data;
+      return {
+        enviados: Number(row?.enviado ?? 0),
+        analise: Number(row?.analise ?? 0),
+        negociacao: Number(row?.negociacao ?? 0),
+        fechados: Number(row?.fechado ?? 0),
+      };
+    },
+  });
+
+  const { data: indicacoesByPeriodRpc } = useQuery({
+    queryKey: ["indicacoes-by-period", funnelFilter],
+    enabled: activeTab === "indicacoes" && funnelFilter !== "custom",
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_indicacoes_by_period", { period: funnelFilter });
+      if (error) throw error;
+      return (data ?? []) as Pick<Tables<"indicacoes">, "id" | "nome_indicado" | "tipo" | "status" | "valor_potencial" | "created_at">[];
+    },
+  });
+
+  const funnelStats = funnelFilter === "custom" ? localFunnelStats : (funnelStatsRpc ?? localFunnelStats);
+  const indicacoesTabRows = funnelFilter === "custom" ? funnelIndicacoes : (indicacoesByPeriodRpc ?? indicacoes);
+
   const loading = loadingInd || loadingCom;
+  const indicacaoNomeById = useMemo(() => {
+    const out = new Map<number, string>();
+    for (const i of indicacoes) out.set(Number(i.id), i.nome_indicado);
+    return out;
+  }, [indicacoes]);
+
+  const { data: comissoesSummaryRpc } = useQuery({
+    queryKey: ["comissoes-summary"],
+    enabled: activeTab === "comissoes",
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_comissoes_summary");
+      if (error) throw error;
+      const row = Array.isArray(data) ? data[0] : data;
+      return {
+        total_acumulado: Number(row?.total_acumulado ?? 0),
+        total_pendente: Number(row?.total_pendente ?? 0),
+        total_pago: Number(row?.total_pago ?? 0),
+      };
+    },
+  });
+
+  const { data: comissoesFiltradasRpc = [] } = useQuery({
+    queryKey: ["comissoes-filtradas", comissoesPeriodFilter, comissoesStatusFilter],
+    enabled: activeTab === "comissoes",
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_comissoes_filtradas", {
+        p_period: comissoesPeriodFilter,
+        p_status: comissoesStatusFilter,
+      });
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        id: number;
+        valor: number;
+        status: "pendente" | "disponivel" | "pago" | "cancelado";
+        created_at: string;
+        nome_indicado: string;
+      }>;
+    },
+  });
 
   const handleSignOut = async () => {
     try {
@@ -173,10 +292,11 @@ function Dashboard() {
         <nav className="flex-1 px-3 py-5 space-y-1">
           {navItems.map((item) => (
             <button
-              key={item.label}
+              key={item.key}
               type="button"
+              onClick={() => setActiveTab(item.key as "visao-geral" | "indicacoes" | "comissoes")}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition ${
-                item.active
+                activeTab === item.key
                   ? "bg-[#23a548] text-white"
                   : "text-white/90 hover:bg-[#0b6a42] hover:text-white"
               }`}
@@ -187,6 +307,12 @@ function Dashboard() {
           ))}
         </nav>
         <div className="p-4 border-t border-[#04653f]">
+          <a
+            href="mailto:suporte@atomtech.com.br"
+            className="mb-3 w-full inline-flex items-center justify-center rounded-lg border border-white/25 px-3 py-2 text-sm font-medium text-white/95 hover:bg-[#0b6a42] hover:text-white transition"
+          >
+            Falar com o suporte
+          </a>
           <div className="rounded-xl bg-gradient-success p-4">
             <p className="text-xs font-semibold text-primary-dark">Potencial em aberto</p>
             <p className="text-xl font-bold text-primary-dark mt-1">{formatBRL(potencialAberto)}</p>
@@ -232,6 +358,17 @@ function Dashboard() {
                   <div className="absolute right-0 top-12 z-20 w-44 rounded-xl border border-border bg-card shadow-card p-1.5">
                     <button
                       type="button"
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        navigate({ to: "/perfil" });
+                      }}
+                      className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 transition"
+                    >
+                      <User className="h-4 w-4" />
+                      Meu perfil
+                    </button>
+                    <button
+                      type="button"
                       onClick={() => void handleSignOut()}
                       className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 transition"
                     >
@@ -250,7 +387,9 @@ function Dashboard() {
             <p className="text-sm text-muted-foreground">Atualizando seus dados…</p>
           )}
 
-          <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-5">
+          {activeTab === "visao-geral" && (
+            <>
+              <div className="grid sm:grid-cols-2 xl:grid-cols-4 gap-5">
             <StatCard
               label="Total ganho"
               value={formatBRL(stats.totalGanho)}
@@ -323,13 +462,14 @@ function Dashboard() {
               </Button>
             </div>
 
-            <Link
-              to="/indicacoes"
-              className="rounded-xl border border-[#0c6a3b]/35 bg-white px-5 py-4 flex items-center justify-between text-[#0b5a34] font-semibold hover:bg-[#f8fffb] transition"
+            <button
+              type="button"
+              onClick={() => setActiveTab("indicacoes")}
+              className="rounded-xl border border-[#0c6a3b]/35 bg-white px-5 py-4 flex items-center justify-between text-[#0b5a34] font-semibold hover:bg-[#f8fffb] transition text-left"
             >
               <span>Ver minhas indicações</span>
               <ArrowRight className="h-5 w-5" />
-            </Link>
+            </button>
           </div>
 
           <Section title="Indicações recentes" subtitle="Suas últimas 8 indicações">
@@ -399,6 +539,328 @@ function Dashboard() {
               </div>
             </div>
           </div>
+            </>
+          )}
+
+          {activeTab === "indicacoes" && (
+            <>
+              <div className="rounded-xl bg-[#015022] px-4 md:px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-lg border border-white/30 grid place-items-center text-white">
+                    <Users className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <p className="text-white font-semibold leading-tight">Tem alguém para indicar?</p>
+                    <p className="text-white/90 text-sm mt-0.5">Quanto mais você indica, mais você ganha.</p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  onClick={() => setShowModal(true)}
+                  className="h-11 rounded-xl bg-[#2aad2a] hover:bg-[#249824] text-white font-semibold px-5"
+                >
+                  <Plus className="h-5 w-5 mr-1" />
+                  Nova indicação
+                </Button>
+              </div>
+
+              <div className="rounded-2xl border border-border bg-card p-5 md:p-6">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <h3 className="text-xl font-bold text-zinc-900">Funil de indicações</h3>
+                    <p className="text-sm text-muted-foreground mt-1">Acompanhe o status das suas indicações</p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFunnelFilter("today")}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium border transition ${
+                        funnelFilter === "today"
+                          ? "bg-[#015022] text-white border-[#015022]"
+                          : "bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-50"
+                      }`}
+                    >
+                      Hoje
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFunnelFilter("week")}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium border transition ${
+                        funnelFilter === "week"
+                          ? "bg-[#015022] text-white border-[#015022]"
+                          : "bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-50"
+                      }`}
+                    >
+                      1 semana
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFunnelFilter("month")}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium border transition ${
+                        funnelFilter === "month"
+                          ? "bg-[#015022] text-white border-[#015022]"
+                          : "bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-50"
+                      }`}
+                    >
+                      1 mês
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFunnelFilter("custom")}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium border transition ${
+                        funnelFilter === "custom"
+                          ? "bg-[#015022] text-white border-[#015022]"
+                          : "bg-white text-zinc-700 border-zinc-300 hover:bg-zinc-50"
+                      }`}
+                    >
+                      Personalizado
+                    </button>
+                  </div>
+                </div>
+
+                {funnelFilter === "custom" && (
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <Input
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="h-10 rounded-lg"
+                    />
+                    <Input
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="h-10 rounded-lg"
+                    />
+                  </div>
+                )}
+
+                <div className="mt-5 grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <FunnelStep
+                    icon={Users}
+                    value={funnelStats.enviados}
+                    title="Indicações"
+                    description="Enviadas"
+                    iconBgClass="bg-emerald-100 text-emerald-700"
+                    valueClass="text-emerald-700"
+                  />
+                  <FunnelStep
+                    icon={Hourglass}
+                    value={funnelStats.analise}
+                    title="Em análise"
+                    description="Pelo time"
+                    iconBgClass="bg-amber-100 text-amber-700"
+                    valueClass="text-amber-600"
+                  />
+                  <FunnelStep
+                    icon={ChartLine}
+                    value={funnelStats.negociacao}
+                    title="Em negociação"
+                    description="Em contato"
+                    iconBgClass="bg-blue-100 text-blue-700"
+                    valueClass="text-blue-600"
+                  />
+                  <FunnelStep
+                    icon={BadgeCheck}
+                    value={funnelStats.fechados}
+                    title="Fechados"
+                    description="Comissão gerada"
+                    iconBgClass="bg-emerald-100 text-emerald-700"
+                    valueClass="text-emerald-700"
+                  />
+                </div>
+              </div>
+
+              <Section title="Minhas indicações" subtitle="Lista completa das suas indicações">
+              <div className="overflow-x-auto -mx-6 lg:-mx-7 px-6 lg:px-7">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-muted-foreground border-b border-border">
+                      <th className="font-medium pb-3">Nome</th>
+                      <th className="font-medium pb-3">Tipo</th>
+                      <th className="font-medium pb-3">Status</th>
+                      <th className="font-medium pb-3">Valor potencial</th>
+                      <th className="font-medium pb-3">Data</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {indicacoesTabRows.map((i) => (
+                      <tr key={i.id}>
+                        <td className="py-3.5 font-medium">{i.nome_indicado}</td>
+                        <td className="py-3.5 text-muted-foreground">{mapTipoDbToUi(i.tipo)}</td>
+                        <td className="py-3.5">
+                          <StatusBadge status={dbStatusToUi(i.status)} />
+                        </td>
+                        <td className="py-3.5 font-semibold text-primary">{formatBRL(Number(i.valor_potencial))}</td>
+                        <td className="py-3.5 text-muted-foreground">{formatDate(i.created_at)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              </Section>
+            </>
+          )}
+
+          {activeTab === "comissoes" && (
+            <div className="space-y-6">
+              <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-full bg-blue-100 grid place-items-center">
+                      <Wallet className="h-4 w-4 text-blue-600" />
+                    </div>
+                    <p className="text-zinc-900 font-semibold">Total acumulado</p>
+                  </div>
+                  <p className="mt-2 text-sm font-bold text-blue-600">
+                    {formatBRL(comissoesSummaryRpc?.total_acumulado ?? 0)}
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-full bg-amber-100 grid place-items-center">
+                      <Hourglass className="h-4 w-4 text-amber-600" />
+                    </div>
+                    <p className="text-zinc-900 font-semibold">Saldo pendente</p>
+                  </div>
+                  <p className="mt-2 text-sm font-bold text-amber-600">
+                    {formatBRL(comissoesSummaryRpc?.total_pendente ?? 0)}
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-full bg-emerald-100 grid place-items-center">
+                      <BadgeCheck className="h-4 w-4 text-emerald-600" />
+                    </div>
+                    <p className="text-zinc-900 font-semibold">Total já pago</p>
+                  </div>
+                  <p className="mt-2 text-sm font-bold text-emerald-600">
+                    {formatBRL(comissoesSummaryRpc?.total_pago ?? 0)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-2xl border border-zinc-200 bg-white shadow-sm">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between px-4 md:px-5 py-4 border-b border-zinc-200">
+                  <h3 className="text-lg font-semibold text-zinc-900">Histórico de ganhos</h3>
+
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={comissoesPeriodFilter}
+                      onChange={(e) => setComissoesPeriodFilter(e.target.value as "7d" | "30d" | "90d")}
+                      className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-700"
+                    >
+                      <option value="7d">Últimos 7 dias</option>
+                      <option value="30d">Últimos 30 dias</option>
+                      <option value="90d">Últimos 90 dias</option>
+                    </select>
+
+                    <select
+                      value={comissoesStatusFilter}
+                      onChange={(e) =>
+                        setComissoesStatusFilter(e.target.value as "all" | "pago" | "pendente" | "disponivel")
+                      }
+                      className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-700"
+                    >
+                      <option value="all">Todos</option>
+                      <option value="pago">Pago</option>
+                      <option value="pendente">Pendente</option>
+                      <option value="disponivel">Disponível</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-zinc-800 border-b border-zinc-200">
+                        <th className="font-semibold py-3 px-4 md:px-5">Cliente</th>
+                        <th className="font-semibold py-3 px-4 md:px-5">Data</th>
+                        <th className="font-semibold py-3 px-4 md:px-5">Valor ganho</th>
+                        <th className="font-semibold py-3 px-4 md:px-5">Status</th>
+                        <th className="font-semibold py-3 px-4 md:px-5 text-right">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {comissoesFiltradasRpc.map((c) => (
+                        <tr key={c.id}>
+                          <td className="py-3 px-4 md:px-5 text-zinc-800">
+                            {c.nome_indicado || `Comissão #${c.id}`}
+                          </td>
+                          <td className="py-3 px-4 md:px-5 text-zinc-600">
+                            {new Date(c.created_at).toLocaleDateString("pt-BR", {
+                              day: "2-digit",
+                              month: "2-digit",
+                            })}
+                          </td>
+                          <td className="py-3 px-4 md:px-5 text-zinc-800">{formatBRL(Number(c.valor))}</td>
+                          <td className="py-3 px-4 md:px-5">
+                            <span
+                              className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
+                                c.status === "pago"
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : c.status === "pendente"
+                                    ? "bg-amber-100 text-amber-700"
+                                    : "bg-blue-100 text-blue-700"
+                              }`}
+                            >
+                              <span
+                                className={`mr-1.5 h-2 w-2 rounded-full ${
+                                  c.status === "pago"
+                                    ? "bg-emerald-500"
+                                    : c.status === "pendente"
+                                      ? "bg-amber-500"
+                                      : "bg-blue-500"
+                                }`}
+                              />
+                              {c.status === "pago" ? "Pago" : c.status === "pendente" ? "Pendente" : "Disponível"}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 md:px-5">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                type="button"
+                                className="h-8 w-8 rounded-md border border-zinc-200 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-700 transition grid place-items-center"
+                                title="Excluir registro"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+
+                      {comissoesFiltradasRpc.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="py-8 px-4 text-center text-sm text-muted-foreground">
+                            Nenhum ganho encontrado para os filtros selecionados.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm p-4 md:p-5 flex items-start gap-3">
+                <div className="h-8 w-8 rounded-full bg-emerald-100 grid place-items-center shrink-0">
+                  <BadgeCheck className="h-5 w-5 text-emerald-600" />
+                </div>
+                <div>
+                  <p className="text-base font-semibold text-zinc-900 leading-tight">Instruções</p>
+                  <p className="text-sm text-zinc-600 mt-1">
+                    Seus ganhos são gerados apenas quando uma indicação resulta em venda concluída.
+                  </p>
+                  <p className="text-sm text-zinc-600">
+                    Os valores são processados e pagos conforme o status de cada projeto.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
       </main>
 
@@ -444,6 +906,33 @@ function StatCard({
       <p className={`mt-2 text-[29px] leading-none font-bold ${valueClassName}`}>{value}</p>
       <p className="mt-2 text-xs text-zinc-500">{footerLabel}</p>
       {footerContent && <div className="mt-2 text-xs font-medium">{footerContent}</div>}
+    </div>
+  );
+}
+
+function FunnelStep({
+  icon: Icon,
+  value,
+  title,
+  description,
+  iconBgClass,
+  valueClass,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  value: number;
+  title: string;
+  description: string;
+  iconBgClass: string;
+  valueClass: string;
+}) {
+  return (
+    <div className="text-center">
+      <div className={`mx-auto h-14 w-14 rounded-full grid place-items-center ${iconBgClass}`}>
+        <Icon className="h-6 w-6" />
+      </div>
+      <p className={`mt-3 text-3xl font-bold ${valueClass}`}>{value}</p>
+      <p className="text-xl font-bold text-zinc-900 leading-tight mt-1">{title}</p>
+      <p className="text-sm text-muted-foreground mt-1">{description}</p>
     </div>
   );
 }

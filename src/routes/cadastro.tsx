@@ -202,8 +202,8 @@ function Cadastro() {
           </div>
 
           <p className="text-sm text-center text-muted-foreground mt-6">
-            Já recebeu seu código?{" "}
-            <Link to="/confirmacao-cadastro" search={{ email: form.email }} className="text-primary font-semibold hover:underline">
+            Já possui uma conta?{" "}
+            <Link to="/login" search={{ email: form.email, redirect }} className="text-primary font-semibold hover:underline">
               Entrar
             </Link>
           </p>
