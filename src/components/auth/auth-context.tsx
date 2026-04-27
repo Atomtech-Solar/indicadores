@@ -3,6 +3,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -13,6 +14,8 @@ import { queryClient } from "@/lib/query-client";
 type AuthContextValue = {
   session: Session | null;
   user: User | null;
+  role: "indicador" | "admin" | null;
+  isAdmin: boolean;
   isLoading: boolean;
 };
 
@@ -21,10 +24,31 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [role, setRole] = useState<"indicador" | "admin" | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const roleFetchSeqRef = useRef(0);
 
   useEffect(() => {
     let isMounted = true;
+    const fetchRole = async (hasUser: boolean) => {
+      const fetchSeq = ++roleFetchSeqRef.current;
+
+      if (!hasUser) {
+        if (isMounted && fetchSeq === roleFetchSeqRef.current) setRole(null);
+        return;
+      }
+
+      const { data, error } = await supabase.rpc("is_admin");
+
+      if (!isMounted || fetchSeq !== roleFetchSeqRef.current) return;
+      if (error) {
+        setRole("indicador");
+        return;
+      }
+
+      const resolvedRole = data === true ? "admin" : "indicador";
+      setRole(resolvedRole);
+    };
 
     const bootstrap = async () => {
       const {
@@ -34,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!isMounted) return;
       setSession(initialSession);
       setUser(initialSession?.user ?? null);
+      await fetchRole(Boolean(initialSession?.user));
       setIsLoading(false);
     };
 
@@ -44,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
+      void fetchRole(Boolean(nextSession?.user));
 
       void queryClient.invalidateQueries({ queryKey: ["auth"] });
       void queryClient.invalidateQueries({ queryKey: ["usuario"] });
@@ -61,9 +87,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       session,
       user,
+      role,
+      isAdmin: role === "admin",
       isLoading,
     }),
-    [session, user, isLoading],
+    [session, user, role, isLoading],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

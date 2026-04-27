@@ -9,6 +9,14 @@ import { supabase } from "@/lib/supabase/client";
 
 type LoginSearch = { redirect?: string; email?: string };
 
+function sanitizeRedirect(redirect?: string): string | undefined {
+  if (!redirect) return undefined;
+  const value = redirect.trim();
+  if (!value.startsWith("/")) return undefined;
+  if (value === "/login" || value.startsWith("/login?")) return undefined;
+  return value;
+}
+
 export const Route = createFileRoute("/login")({
   validateSearch: (raw: Record<string, unknown>): LoginSearch => ({
     redirect: typeof raw.redirect === "string" ? raw.redirect : undefined,
@@ -26,6 +34,7 @@ export const Route = createFileRoute("/login")({
 function Login() {
   const navigate = useNavigate();
   const { redirect, email: emailFromSearch } = Route.useSearch();
+  const safeRedirect = sanitizeRedirect(redirect);
   const [email, setEmail] = useState(emailFromSearch ?? "");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -54,7 +63,13 @@ function Login() {
         return;
       }
 
-      navigate({ to: redirect || "/dashboard" });
+      let destination = safeRedirect || "/dashboard";
+      const { data: isAdmin } = await supabase.rpc("is_admin");
+      if (isAdmin === true) {
+        destination = "/admin";
+      }
+
+      navigate({ to: destination, replace: true });
     } catch {
       toast.error("Não foi possível entrar agora. Tente novamente.");
     } finally {
@@ -114,7 +129,7 @@ function Login() {
 
           <p className="text-sm text-center text-muted-foreground mt-6">
             Ainda não confirmou cadastro?{" "}
-            <Link to="/cadastro" search={{ redirect }} className="text-primary font-semibold hover:underline">
+            <Link to="/cadastro" search={{ redirect: safeRedirect }} className="text-primary font-semibold hover:underline">
               Cadastrar e confirmar código
             </Link>
           </p>

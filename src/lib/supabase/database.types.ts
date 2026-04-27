@@ -89,7 +89,7 @@ export type Database = {
           tipo: string;
           usuario_id: number;
           valor_comissao: number | null;
-          valor_potencial: number;
+          valor_potencial: number | null;
           whatsapp: string;
         };
         Insert: {
@@ -100,7 +100,7 @@ export type Database = {
           tipo: string;
           usuario_id: number;
           valor_comissao?: number | null;
-          valor_potencial?: number;
+          valor_potencial?: number | null;
           whatsapp: string;
         };
         Update: {
@@ -111,7 +111,7 @@ export type Database = {
           tipo?: string;
           usuario_id?: number;
           valor_comissao?: number | null;
-          valor_potencial?: number;
+          valor_potencial?: number | null;
           whatsapp?: string;
         };
         Relationships: [
@@ -129,6 +129,7 @@ export type Database = {
           created_at: string;
           id: number;
           nome: string;
+          role: string;
           usuario_id: string;
           whatsapp: string;
         };
@@ -136,6 +137,7 @@ export type Database = {
           created_at?: string;
           id?: number;
           nome: string;
+          role?: string;
           usuario_id: string;
           whatsapp: string;
         };
@@ -143,6 +145,7 @@ export type Database = {
           created_at?: string;
           id?: number;
           nome?: string;
+          role?: string;
           usuario_id?: string;
           whatsapp?: string;
         };

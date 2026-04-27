@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/components/auth/auth-context";
 
@@ -6,14 +6,29 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isLoading } = useAuth();
+  const isRedirectingRef = useRef(false);
 
   useEffect(() => {
     if (isLoading) return;
-    if (user) return;
+
+    if (user) {
+      isRedirectingRef.current = false;
+      return;
+    }
+
+    if (isRedirectingRef.current) return;
+    isRedirectingRef.current = true;
+
+    const currentPath = `${location.pathname}${location.searchStr}`;
+    const shouldAttachRedirect =
+      !currentPath.startsWith("/login") &&
+      !currentPath.startsWith("/cadastro") &&
+      !currentPath.startsWith("/confirmacao") &&
+      !currentPath.startsWith("/confirmacao-cadastro");
 
     void navigate({
       to: "/login",
-      search: { redirect: `${location.pathname}${location.searchStr}` },
+      search: shouldAttachRedirect ? { redirect: currentPath } : {},
       replace: true,
     });
   }, [isLoading, user, navigate, location.pathname, location.searchStr]);

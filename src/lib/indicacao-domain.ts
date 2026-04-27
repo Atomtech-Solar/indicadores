@@ -6,7 +6,7 @@ export type IndicacaoRow = Tables<"indicacoes">;
 export type DbIndicacaoStatus = "enviado" | "analise" | "negociacao" | "fechado" | "perdido";
 
 /** Labels usados na UI atual */
-export type UiIndicacaoStatus = "Em análise" | "Em negociação" | "Fechado" | "Perdido";
+export type UiIndicacaoStatus = "Enviado" | "Em análise" | "Em negociação" | "Fechado" | "Perdido";
 
 export type IndicacaoTipo = "Pessoa" | "Empresa";
 
@@ -22,6 +22,7 @@ export function dbStatusToUi(status: string): UiIndicacaoStatus {
   const s = status as DbIndicacaoStatus;
   switch (s) {
     case "enviado":
+      return "Enviado";
     case "analise":
       return "Em análise";
     case "negociacao":

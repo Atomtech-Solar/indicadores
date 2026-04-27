@@ -60,6 +60,19 @@ function monthKey(iso: string) {
   return iso.slice(0, 7);
 }
 
+function maskWhatsapp(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+}
+
+function formatPotentialValue(value: number | null | undefined) {
+  if (value == null) return "Ainda não definido";
+  return formatBRL(Number(value));
+}
+
 function last6MonthLabels() {
   const out: { key: string; label: string }[] = [];
   const now = new Date();
@@ -235,7 +248,7 @@ function Dashboard() {
     queryKey: ["comissoes-summary"],
     enabled: activeTab === "comissoes",
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_comissoes_summary");
+      const { data, error } = await supabase.rpc("get_comissoes_summary", { p_usuario_id: null });
       if (error) throw error;
       const row = Array.isArray(data) ? data[0] : data;
       return {
@@ -253,6 +266,7 @@ function Dashboard() {
       const { data, error } = await supabase.rpc("get_comissoes_filtradas", {
         p_period: comissoesPeriodFilter,
         p_status: comissoesStatusFilter,
+        p_usuario_id: null,
       });
       if (error) throw error;
       return (data ?? []) as Array<{
@@ -500,9 +514,7 @@ function Dashboard() {
                       <td className="py-3.5">
                         <StatusBadge status={dbStatusToUi(i.status)} />
                       </td>
-                      <td className="py-3.5 font-semibold text-primary">
-                        {formatBRL(Number(i.valor_potencial))}
-                      </td>
+                      <td className="py-3.5 font-semibold text-primary">{formatPotentialValue(i.valor_potencial)}</td>
                       <td className="py-3.5 text-muted-foreground">{formatDate(i.created_at)}</td>
                     </tr>
                   ))}
@@ -691,7 +703,7 @@ function Dashboard() {
                         <td className="py-3.5">
                           <StatusBadge status={dbStatusToUi(i.status)} />
                         </td>
-                        <td className="py-3.5 font-semibold text-primary">{formatBRL(Number(i.valor_potencial))}</td>
+                        <td className="py-3.5 font-semibold text-primary">{formatPotentialValue(i.valor_potencial)}</td>
                         <td className="py-3.5 text-muted-foreground">{formatDate(i.created_at)}</td>
                       </tr>
                     ))}
@@ -951,6 +963,7 @@ function Section({ title, subtitle, children }: { title: string; subtitle?: stri
 
 function StatusBadge({ status }: { status: UiIndicacaoStatus }) {
   const map: Record<UiIndicacaoStatus, string> = {
+    Enviado: "bg-blue-100 text-blue-700",
     "Em análise": "bg-warning/25 text-warning-foreground",
     "Em negociação": "bg-primary/15 text-primary-dark",
     Fechado: "bg-primary text-primary-foreground",
@@ -1116,7 +1129,7 @@ function NovaIndicacaoModal({
               required
               value={form.whatsapp}
               placeholder="(11) 99999-9999"
-              onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
+              onChange={(e) => setForm({ ...form, whatsapp: maskWhatsapp(e.target.value) })}
               className="mt-1.5 rounded-[10px] h-11"
             />
           </div>
