@@ -24,7 +24,11 @@ export async function callAdminOpsMutation(payload: Exclude<AdminAction, { actio
   if (error || data?.error) throw new Error("Não foi possível concluir a operação administrativa.");
 }
 
-export async function setCommission(input: { indicacaoId: number; valor: number }): Promise<void> {
+export async function setCommission(input: {
+  indicacaoId: number;
+  valorComissao: number;
+  valorProjeto: number;
+}): Promise<void> {
   const { data, error } = await supabase.functions.invoke("set-commission", { body: input });
   if (error || data?.error) throw new Error("Não foi possível definir a comissão.");
 }

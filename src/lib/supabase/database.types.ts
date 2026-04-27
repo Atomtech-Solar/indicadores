@@ -41,25 +41,31 @@ export type Database = {
       comissoes: {
         Row: {
           created_at: string;
+          data_pagamento: string | null;
           id: number;
           indicacao_id: number;
           status: string;
+          updated_at: string;
           usuario_id: number;
           valor: number;
         };
         Insert: {
           created_at?: string;
+          data_pagamento?: string | null;
           id?: number;
           indicacao_id: number;
           status: string;
+          updated_at?: string;
           usuario_id: number;
           valor: number;
         };
         Update: {
           created_at?: string;
+          data_pagamento?: string | null;
           id?: number;
           indicacao_id?: number;
           status?: string;
+          updated_at?: string;
           usuario_id?: number;
           valor?: number;
         };
@@ -88,8 +94,10 @@ export type Database = {
           status: string;
           tipo: string;
           usuario_id: number;
+          updated_at: string;
           valor_comissao: number | null;
           valor_potencial: number | null;
+          valor_projeto: number | null;
           whatsapp: string;
         };
         Insert: {
@@ -99,8 +107,10 @@ export type Database = {
           status?: string;
           tipo: string;
           usuario_id: number;
+          updated_at?: string;
           valor_comissao?: number | null;
           valor_potencial?: number | null;
+          valor_projeto?: number | null;
           whatsapp: string;
         };
         Update: {
@@ -110,8 +120,10 @@ export type Database = {
           status?: string;
           tipo?: string;
           usuario_id?: number;
+          updated_at?: string;
           valor_comissao?: number | null;
           valor_potencial?: number | null;
+          valor_projeto?: number | null;
           whatsapp?: string;
         };
         Relationships: [
@@ -156,6 +168,16 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      get_admin_dashboard_summary: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          total_faturamento: number;
+          faturamento_mes: number;
+          total_comissoes_pagas: number;
+          total_indicacoes: number;
+          total_indicadores: number;
+        }[];
+      };
       get_my_usuario_id: { Args: Record<PropertyKey, never>; Returns: number };
     };
     Enums: {

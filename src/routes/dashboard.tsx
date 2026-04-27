@@ -863,10 +863,12 @@ function Dashboard() {
                 <div>
                   <p className="text-base font-semibold text-zinc-900 leading-tight">Instruções</p>
                   <p className="text-sm text-zinc-600 mt-1">
-                    Seus ganhos são gerados apenas quando uma indicação resulta em venda concluída.
+                    O total acumulado soma todos os valores das suas comissões, independentemente do
+                    status.
                   </p>
                   <p className="text-sm text-zinc-600">
-                    Os valores são processados e pagos conforme o status de cada projeto.
+                    O saldo pendente considera só comissões marcadas como pendente; o total já pago,
+                    só as marcadas como pago.
                   </p>
                 </div>
               </div>

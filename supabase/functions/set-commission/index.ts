@@ -2,7 +2,10 @@ import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-
 
 type SetCommissionPayload = {
   indicacaoId: number;
-  valor: number;
+  /** Valor da comissão do indicador (comissoes.valor + indicacoes.valor_potencial) */
+  valorComissao: number;
+  /** Valor do projeto / faturamento da empresa (indicacoes.valor_projeto) */
+  valorProjeto: number;
 };
 
 function buildCorsHeaders(req: Request): Record<string, string> {
@@ -54,7 +57,8 @@ async function ensureAdmin(adminClient: SupabaseClient, authUserId: string): Pro
 async function upsertCommissionByIndicacao(
   adminClient: SupabaseClient,
   indicacaoId: number,
-  valor: number,
+  valorComissao: number,
+  valorProjeto: number,
 ): Promise<void> {
   const { data: indicacao, error: indicacaoError } = await adminClient
     .from("indicacoes")
@@ -63,11 +67,16 @@ async function upsertCommissionByIndicacao(
     .maybeSingle();
 
   if (indicacaoError || !indicacao) throw new Error("INDICACAO_NOT_FOUND");
-  if (indicacao.status !== "negociacao") throw new Error("INVALID_STATUS_FOR_COMMISSION");
+  if (indicacao.status !== "negociacao" && indicacao.status !== "fechado") {
+    throw new Error("INVALID_STATUS_FOR_COMMISSION");
+  }
 
   const { error: indicacaoUpdateError } = await adminClient
     .from("indicacoes")
-    .update({ valor_potencial: valor })
+    .update({
+      valor_potencial: valorComissao,
+      valor_projeto: valorProjeto,
+    })
     .eq("id", indicacao.id);
 
   if (indicacaoUpdateError) throw new Error("UPDATE_INDICACAO_VALUE_FAILED");
@@ -84,7 +93,7 @@ async function upsertCommissionByIndicacao(
     const { error: updateError } = await adminClient
       .from("comissoes")
       .update({
-        valor,
+        valor: valorComissao,
         status: "pendente",
       })
       .eq("id", existingCommission.id);
@@ -94,7 +103,7 @@ async function upsertCommissionByIndicacao(
     const { error: insertError } = await adminClient.from("comissoes").insert({
       indicacao_id: indicacao.id,
       usuario_id: indicacao.usuario_id,
-      valor,
+      valor: valorComissao,
       status: "pendente",
     });
 
@@ -104,10 +113,11 @@ async function upsertCommissionByIndicacao(
   const { error: activityError } = await adminClient.from("atividades").insert({
     usuario_id: indicacao.usuario_id,
     tipo: "comissao_definida_admin",
-    descricao: `Comissão definida para indicação ${indicacao.id}`,
+    descricao: `Comissão e valor de projeto definidos para indicação ${indicacao.id}`,
     metadata: {
       indicacao_id: indicacao.id,
-      valor,
+      valor_comissao: valorComissao,
+      valor_projeto: valorProjeto,
       status: "pendente",
     },
   });
@@ -130,16 +140,26 @@ Deno.serve(async (req: Request) => {
     if (!requesterId) return jsonResponse(req, 401, { error: "unauthorized" });
     await ensureAdmin(adminClient, requesterId);
 
-    const payload = (await req.json()) as Partial<SetCommissionPayload>;
-    const indicacaoId = Number(payload.indicacaoId);
-    const valor = Number(payload.valor);
+    const payload = (await req.json()) as Partial<SetCommissionPayload> & { valor?: number; indicacaoId?: number };
 
-    if (!Number.isInteger(indicacaoId) || indicacaoId <= 0 || !Number.isFinite(valor) || valor <= 0) {
+    const indicacaoId = Number(payload.indicacaoId);
+    const valorComissao = Number(
+      payload.valorComissao ?? payload.valor,
+    );
+    const valorProjeto = Number(payload.valorProjeto);
+
+    if (!Number.isInteger(indicacaoId) || indicacaoId <= 0) {
       return jsonResponse(req, 400, { error: "invalid_payload" });
     }
+    if (!Number.isFinite(valorComissao) || valorComissao <= 0) {
+      return jsonResponse(req, 400, { error: "invalid_comissao" });
+    }
+    if (!Number.isFinite(valorProjeto) || valorProjeto <= 0) {
+      return jsonResponse(req, 400, { error: "invalid_projeto" });
+    }
 
-    await upsertCommissionByIndicacao(adminClient, indicacaoId, valor);
-    return jsonResponse(req, 200, { message: "Comissão definida com sucesso." });
+    await upsertCommissionByIndicacao(adminClient, indicacaoId, valorComissao, valorProjeto);
+    return jsonResponse(req, 200, { message: "Comissão e faturamento definidos com sucesso." });
   } catch {
     return jsonResponse(req, 400, { error: "Não foi possível concluir a solicitação." });
   }

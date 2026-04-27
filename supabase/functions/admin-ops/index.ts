@@ -57,33 +57,68 @@ async function ensureAdmin(adminClient: SupabaseClient, authUserId: string): Pro
   }
 }
 
+function monthKeyFromIso(iso: string): string {
+  return iso.slice(0, 7);
+}
+
 async function getOverview(adminClient: SupabaseClient) {
-  const [{ data: usuarios }, { data: indicacoes }, { data: comissoes }] = await Promise.all([
-    adminClient.from("usuarios").select("id, created_at"),
-    adminClient.from("indicacoes").select("id, status, created_at"),
-    adminClient.from("comissoes").select("id, valor, status, created_at"),
+  const [{ data: indicacoes }, { data: comissoes }, { data: usuariosRoles }] = await Promise.all([
+    adminClient.from("indicacoes").select("id, nome_indicado, status, valor_projeto, created_at, updated_at"),
+    adminClient
+      .from("comissoes")
+      .select("id, usuario_id, indicacao_id, valor, status, created_at, updated_at, data_pagamento"),
+    adminClient.from("usuarios").select("id, nome, role"),
   ]);
 
   const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const monthKey = (iso: string) => iso.slice(0, 7);
-  const safeUsuarios = usuarios ?? [];
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const safeIndicacoes = indicacoes ?? [];
   const safeComissoes = comissoes ?? [];
+  const safeUsuarios = usuariosRoles ?? [];
 
-  const receitaTotal = safeComissoes.reduce((acc, c) => acc + Number(c.valor), 0);
-  const receitaMes = safeComissoes
-    .filter((c) => monthKey(c.created_at) === currentMonth)
+  const totalFaturamento = safeIndicacoes
+    .filter((i) => i.status === "fechado" && i.valor_projeto != null)
+    .reduce((acc, i) => acc + Number(i.valor_projeto), 0);
+
+  const faturamentoMes = safeIndicacoes
+    .filter(
+      (i) =>
+        i.status === "fechado" &&
+        i.valor_projeto != null &&
+        monthKeyFromIso(i.updated_at) === currentMonthKey,
+    )
+    .reduce((acc, i) => acc + Number(i.valor_projeto), 0);
+
+  const totalComissoesPagas = safeComissoes
+    .filter((c) => c.status === "pago")
     .reduce((acc, c) => acc + Number(c.valor), 0);
+
+  const totalIndicadores = safeUsuarios.filter((u) => u.role === "indicador").length;
+  const totalIndicacoes = safeIndicacoes.length;
 
   const growthSeries = Array.from({ length: 6 }).map((_, index) => {
     const d = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
     const label = d.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
-    const receita = safeComissoes
-      .filter((c) => monthKey(c.created_at) === key && c.status === "pago")
+
+    const faturamento = safeIndicacoes
+      .filter(
+        (i) =>
+          i.status === "fechado" &&
+          i.valor_projeto != null &&
+          monthKeyFromIso(i.updated_at) === key,
+      )
+      .reduce((acc, i) => acc + Number(i.valor_projeto), 0);
+
+    const comissoesPagas = safeComissoes
+      .filter((c) => {
+        if (c.status !== "pago") return false;
+        const ref = (c.data_pagamento as string | null) ?? c.updated_at ?? c.created_at;
+        return monthKeyFromIso(ref) === key;
+      })
       .reduce((acc, c) => acc + Number(c.valor), 0);
-    return { label, receita };
+
+    return { label, faturamento, comissoesPagas };
   });
 
   const funnel = {
@@ -94,20 +129,57 @@ async function getOverview(adminClient: SupabaseClient) {
     perdido: safeIndicacoes.filter((i) => i.status === "perdido").length,
   };
 
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+  const fechadosUltimos7 = safeIndicacoes.filter(
+    (i) => i.status === "fechado" && new Date(i.updated_at) >= sevenDaysAgo,
+  ).length;
+
   const alerts: string[] = [];
-  if (funnel.analise > funnel.fechado * 3) alerts.push("Muitas indicações paradas em análise.");
-  if ((safeComissoes.filter((c) => c.status === "pendente").length ?? 0) > 10) alerts.push("Volume alto de comissões pendentes.");
-  if (alerts.length === 0) alerts.push("Operação estável no momento.");
+  if (fechadosUltimos7 === 0) {
+    alerts.push("⚠️ Nenhuma venda fechada recentemente");
+  }
+  if (funnel.analise >= 5) {
+    alerts.push(`⚠️ ${funnel.analise} indicações aguardando análise`);
+  }
+  const last = growthSeries[growthSeries.length - 1];
+  const prev = growthSeries[growthSeries.length - 2];
+  if (last && prev && last.faturamento > prev.faturamento && last.faturamento > 0) {
+    alerts.push("📈 Faturamento em crescimento este mês");
+  }
+  if (alerts.length === 0) {
+    alerts.push("Operação estável no momento.");
+  }
+
+  const userNameById = new Map<number, string>(safeUsuarios.map((u) => [u.id as number, (u.nome as string) ?? "Usuário"]));
+  const indicacaoNameById = new Map<number, string>(
+    safeIndicacoes.map((i) => [i.id as number, (i.nome_indicado as string) ?? "Indicação"]),
+  );
+
+  const comissoesPagasLista = safeComissoes
+    .filter((c) => c.status === "pago")
+    .map((c) => {
+      const ref = (c.data_pagamento as string | null) ?? (c.updated_at as string) ?? (c.created_at as string);
+      return {
+        id: c.id as number,
+        usuario_nome: userNameById.get(c.usuario_id as number) ?? "Usuário",
+        indicacao_nome: indicacaoNameById.get(c.indicacao_id as number) ?? `Indicação #${c.indicacao_id}`,
+        valor: Number(c.valor),
+        data_pagamento: ref,
+      };
+    })
+    .sort((a, b) => new Date(b.data_pagamento).getTime() - new Date(a.data_pagamento).getTime())
+    .slice(0, 50);
 
   return {
     metrics: {
-      receitaTotal,
-      receitaMes,
-      totalUsuarios: safeUsuarios.length,
-      novosUsuarios: safeUsuarios.filter((u) => monthKey(u.created_at) === currentMonth).length,
-      totalIndicacoes: safeIndicacoes.length,
-      comissoesPagas: safeComissoes.filter((c) => c.status === "pago").length,
+      totalFaturamento,
+      faturamentoMes,
+      totalComissoesPagas,
+      totalIndicacoes,
+      totalIndicadores,
     },
+    comissoesPagasLista,
     growthSeries,
     funnel,
     alerts,
@@ -140,7 +212,7 @@ async function listIndicacoes(adminClient: SupabaseClient) {
   const [{ data: indicacoes }, { data: usuarios }] = await Promise.all([
     adminClient
       .from("indicacoes")
-      .select("id, usuario_id, nome_indicado, tipo, status, valor_potencial, created_at")
+      .select("id, usuario_id, nome_indicado, tipo, status, valor_potencial, valor_projeto, created_at, updated_at")
       .order("created_at", { ascending: false }),
     adminClient.from("usuarios").select("id, nome"),
   ]);

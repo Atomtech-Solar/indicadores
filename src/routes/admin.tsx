@@ -11,9 +11,9 @@ import {
   Bell,
   LogOut,
   TrendingUp,
-  UserPlus,
-  Receipt,
   BadgeDollarSign,
+  CalendarDays,
+  PiggyBank,
 } from "lucide-react";
 import { toast } from "sonner";
 import { RequireAdmin } from "@/components/auth/RequireAdmin";
@@ -37,24 +37,32 @@ function AdminRouteComponent() {
   const [activeTab, setActiveTab] = useState<"overview" | "usuarios" | "indicacoes" | "comissoes" | "relatorios" | "configuracoes">("overview");
   const [commissionModal, setCommissionModal] = useState<{ indicacaoId: number; nomeIndicado: string } | null>(null);
   const [commissionValue, setCommissionValue] = useState("");
+  const [projetoValue, setProjetoValue] = useState("");
 
   const { data: overview, isLoading: loadingOverview } = useQuery({
     queryKey: ["admin-overview"],
     retry: false,
     refetchOnWindowFocus: false,
-    queryFn: () => callAdminOps<{
-      metrics: {
-        receitaTotal: number;
-        receitaMes: number;
-        totalUsuarios: number;
-        novosUsuarios: number;
-        totalIndicacoes: number;
-        comissoesPagas: number;
-      };
-      growthSeries: { label: string; receita: number }[];
-      funnel: { enviado: number; analise: number; negociacao: number; fechado: number; perdido: number };
-      alerts: string[];
-    }>({ action: "overview" }),
+    queryFn: () =>
+      callAdminOps<{
+        metrics: {
+          totalFaturamento: number;
+          faturamentoMes: number;
+          totalComissoesPagas: number;
+          totalIndicacoes: number;
+          totalIndicadores: number;
+        };
+        comissoesPagasLista: {
+          id: number;
+          usuario_nome: string;
+          indicacao_nome: string;
+          valor: number;
+          data_pagamento: string;
+        }[];
+        growthSeries: { label: string; faturamento: number; comissoesPagas: number }[];
+        funnel: { enviado: number; analise: number; negociacao: number; fechado: number; perdido: number };
+        alerts: string[];
+      }>({ action: "overview" }),
   });
 
   const { data: usuarios = [], isLoading: loadingUsuarios } = useQuery({
@@ -81,7 +89,9 @@ function AdminRouteComponent() {
           tipo: string;
           status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido";
           valor_potencial: number | null;
+          valor_projeto: number | null;
           created_at: string;
+          updated_at: string;
         }[]
       >({ action: "list_indicacoes" }),
   });
@@ -119,6 +129,7 @@ function AdminRouteComponent() {
     mutationFn: (userId: string) => callAdminOpsMutation({ action: "set_user_role", userId, role: "admin" }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
       toast.success("Usuário promovido para admin.");
     },
     onError: () => toast.error("Não foi possível promover o usuário."),
@@ -155,18 +166,28 @@ function AdminRouteComponent() {
   const setCommissionMutation = useMutation({
     mutationFn: async () => {
       if (!commissionModal) throw new Error("Selecione uma indicação.");
-      const numericValue = Number(commissionValue.replace(",", "."));
-      if (!Number.isFinite(numericValue) || numericValue <= 0) {
+      const numericComissao = Number(commissionValue.replace(",", "."));
+      const numericProjeto = Number(projetoValue.replace(",", "."));
+      if (!Number.isFinite(numericComissao) || numericComissao <= 0) {
         throw new Error("Informe um valor de comissão válido.");
       }
-      await setCommission({ indicacaoId: commissionModal.indicacaoId, valor: numericValue });
+      if (!Number.isFinite(numericProjeto) || numericProjeto <= 0) {
+        throw new Error("Informe o valor do projeto (faturamento) válido.");
+      }
+      await setCommission({
+        indicacaoId: commissionModal.indicacaoId,
+        valorComissao: numericComissao,
+        valorProjeto: numericProjeto,
+      });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin-comissoes"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"] });
       toast.success("Comissão definida com sucesso.");
       setCommissionModal(null);
       setCommissionValue("");
+      setProjetoValue("");
     },
     onError: (error: Error) => {
       toast.error(error.message || "Não foi possível definir a comissão.");
@@ -241,20 +262,98 @@ function AdminRouteComponent() {
           <div className="px-6 lg:px-10 py-8 space-y-6 max-w-[1400px]">
             {activeTab === "overview" && (
               <div className="space-y-6">
-                <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                  <AdminMetricCard label="Receita total" value={formatBRL(overview?.metrics.receitaTotal ?? 0)} icon={BadgeDollarSign} />
-                  <AdminMetricCard label="Receita mês" value={formatBRL(overview?.metrics.receitaMes ?? 0)} icon={Receipt} />
-                  <AdminMetricCard label="Total usuários" value={String(overview?.metrics.totalUsuarios ?? 0)} icon={Users} />
-                  <AdminMetricCard label="Novos usuários" value={String(overview?.metrics.novosUsuarios ?? 0)} icon={UserPlus} />
-                  <AdminMetricCard label="Total indicações" value={String(overview?.metrics.totalIndicacoes ?? 0)} icon={TrendingUp} />
-                  <AdminMetricCard label="Comissões pagas" value={String(overview?.metrics.comissoesPagas ?? 0)} icon={Wallet} />
+                <div className="grid sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-4">
+                  <AdminMetricCard
+                    label="Faturamento total"
+                    value={formatBRL(overview?.metrics?.totalFaturamento ?? 0)}
+                    icon={BadgeDollarSign}
+                  />
+                  <AdminMetricCard
+                    label="Faturamento mês"
+                    value={formatBRL(overview?.metrics?.faturamentoMes ?? 0)}
+                    icon={CalendarDays}
+                  />
+                  <AdminMetricCard
+                    label="Comissões pagas"
+                    value={formatBRL(overview?.metrics?.totalComissoesPagas ?? 0)}
+                    icon={PiggyBank}
+                  />
+                  <AdminMetricCard
+                    label="Indicadores"
+                    value={String(overview?.metrics?.totalIndicadores ?? 0)}
+                    icon={Users}
+                  />
+                  <AdminMetricCard
+                    label="Indicações"
+                    value={String(overview?.metrics?.totalIndicacoes ?? 0)}
+                    icon={TrendingUp}
+                  />
                 </div>
+                {loadingOverview && <p className="text-sm text-zinc-500">Carregando métricas...</p>}
+
+                <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
+                  <div className="px-5 py-4 border-b border-zinc-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                      <h3 className="text-lg font-semibold text-zinc-900">Comissões pagas</h3>
+                      <p className="text-sm text-zinc-600">
+                        Registros com status <span className="font-medium text-emerald-700">pago</span> (até 50 mais
+                        recentes).
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold text-emerald-700">
+                      Total: {formatBRL(overview?.metrics?.totalComissoesPagas ?? 0)}
+                    </p>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm min-w-[640px]">
+                      <thead>
+                        <tr className="text-left border-b border-zinc-200 bg-zinc-50">
+                          <th className="px-5 py-3 font-medium text-zinc-700">Indicador</th>
+                          <th className="px-5 py-3 font-medium text-zinc-700">Indicação</th>
+                          <th className="px-5 py-3 font-medium text-zinc-700">Valor</th>
+                          <th className="px-5 py-3 font-medium text-zinc-700">Data</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {loadingOverview && (
+                          <tr>
+                            <td colSpan={4} className="px-5 py-6 text-center text-zinc-500">
+                              Carregando comissões...
+                            </td>
+                          </tr>
+                        )}
+                        {!loadingOverview && (overview?.comissoesPagasLista?.length ?? 0) === 0 && (
+                          <tr>
+                            <td colSpan={4} className="px-5 py-6 text-center text-zinc-500">
+                              Nenhuma comissão com status pago ainda.
+                            </td>
+                          </tr>
+                        )}
+                        {!loadingOverview &&
+                          (overview?.comissoesPagasLista ?? []).map((c) => (
+                            <tr key={c.id}>
+                              <td className="px-5 py-3 font-medium text-zinc-900">{c.usuario_nome}</td>
+                              <td className="px-5 py-3 text-zinc-700">{c.indicacao_nome}</td>
+                              <td className="px-5 py-3 font-semibold text-emerald-700">{formatBRL(c.valor)}</td>
+                              <td className="px-5 py-3 text-zinc-600">{formatDate(c.data_pagamento)}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
 
                 <div className="grid lg:grid-cols-[2fr_1fr] gap-5">
                   <section className="rounded-2xl border border-zinc-200 bg-white p-5 md:p-6">
-                    <h3 className="text-lg font-semibold text-zinc-900">Crescimento de receita</h3>
-                    <p className="text-sm text-zinc-600">Comissões pagas nos últimos meses</p>
-                    {loadingOverview ? <p className="text-sm text-zinc-500 mt-4">Carregando...</p> : <SimpleAdminLineChart data={overview?.growthSeries ?? []} />}
+                    <h3 className="text-lg font-semibold text-zinc-900">Faturamento e comissões</h3>
+                    <p className="text-sm text-zinc-600">
+                      Linha verde: faturamento (valor projeto, indicações fechadas). Linha azul: comissões pagas.
+                    </p>
+                    {loadingOverview ? (
+                      <p className="text-sm text-zinc-500 mt-4">Carregando...</p>
+                    ) : (
+                      <DualAdminLineChart data={overview?.growthSeries ?? []} />
+                    )}
                   </section>
 
                   <section className="rounded-2xl border border-zinc-200 bg-white p-5 md:p-6">
@@ -339,20 +438,32 @@ function AdminRouteComponent() {
                         <th className="px-5 py-3">Nome indicado</th>
                         <th className="px-5 py-3">Tipo</th>
                         <th className="px-5 py-3">Status</th>
-                        <th className="px-5 py-3">Valor</th>
+                        <th className="px-5 py-3">Comissão (pot.)</th>
+                        <th className="px-5 py-3">Projeto</th>
                         <th className="px-5 py-3">Data</th>
                         <th className="px-5 py-3 text-right">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-100">
-                      {loadingIndicacoes && <tr><td colSpan={7} className="px-5 py-6 text-center text-zinc-500">Carregando indicações...</td></tr>}
+                      {loadingIndicacoes && (
+                        <tr>
+                          <td colSpan={8} className="px-5 py-6 text-center text-zinc-500">
+                            Carregando indicações...
+                          </td>
+                        </tr>
+                      )}
                       {indicacoes.map((i) => (
                         <tr key={i.id}>
                           <td className="px-5 py-3">{i.usuario_nome}</td>
                           <td className="px-5 py-3">{i.nome_indicado}</td>
                           <td className="px-5 py-3">{i.tipo}</td>
                           <td className="px-5 py-3">{i.status}</td>
-                          <td className="px-5 py-3">{formatBRL(Number(i.valor_potencial))}</td>
+                          <td className="px-5 py-3">
+                            {i.valor_potencial == null ? "—" : formatBRL(Number(i.valor_potencial))}
+                          </td>
+                          <td className="px-5 py-3">
+                            {i.valor_projeto == null ? "—" : formatBRL(Number(i.valor_projeto))}
+                          </td>
                           <td className="px-5 py-3">{formatDate(i.created_at)}</td>
                           <td className="px-5 py-3 text-right">
                             <select
@@ -384,7 +495,8 @@ function AdminRouteComponent() {
               <div className="space-y-5">
                 <section className="rounded-2xl border border-zinc-200 bg-white">
                   <div className="px-5 py-4 border-b border-zinc-200">
-                    <h3 className="text-lg font-semibold text-zinc-900">Indicações em negociação</h3>
+                    <h3 className="text-lg font-semibold text-zinc-900">Definir comissão e projeto</h3>
+                    <p className="text-xs text-zinc-500 px-5 pt-1">Indicações em negociação ou fechadas (definir valores)</p>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm min-w-[900px]">
@@ -404,7 +516,7 @@ function AdminRouteComponent() {
                           </tr>
                         )}
                         {indicacoes
-                          .filter((i) => i.status === "negociacao")
+                          .filter((i) => i.status === "negociacao" || i.status === "fechado")
                           .map((i) => (
                             <tr key={`neg-${i.id}`}>
                               <td className="px-5 py-3">{i.usuario_nome}</td>
@@ -495,7 +607,7 @@ function AdminRouteComponent() {
                   <MetricRow label="Total usuários" value={String(reports?.aggregates.totalUsuarios ?? 0)} />
                   <MetricRow label="Total indicações" value={String(reports?.aggregates.totalIndicacoes ?? 0)} />
                   <MetricRow label="Total comissões" value={String(reports?.aggregates.totalComissoes ?? 0)} />
-                  <MetricRow label="Receita paga" value={formatBRL(reports?.aggregates.receitaPaga ?? 0)} />
+                  <MetricRow label="Comissões pagas (valor)" value={formatBRL(reports?.aggregates.receitaPaga ?? 0)} />
                 </section>
               </div>
             )}
@@ -523,18 +635,33 @@ function AdminRouteComponent() {
               Indicação: <span className="font-medium text-zinc-900">{commissionModal.nomeIndicado}</span>
             </p>
 
-            <div className="mt-4">
-              <Label htmlFor="commission-value">Valor da comissão</Label>
-              <Input
-                id="commission-value"
-                type="number"
-                min="0"
-                step="0.01"
-                value={commissionValue}
-                onChange={(event) => setCommissionValue(event.target.value)}
-                className="mt-1.5 h-11 rounded-[10px]"
-                placeholder="Ex.: 350.00"
-              />
+            <div className="mt-4 space-y-4">
+              <div>
+                <Label htmlFor="commission-value">Valor da comissão (indicador)</Label>
+                <Input
+                  id="commission-value"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={commissionValue}
+                  onChange={(event) => setCommissionValue(event.target.value)}
+                  className="mt-1.5 h-11 rounded-[10px]"
+                  placeholder="Ex.: 350.00"
+                />
+              </div>
+              <div>
+                <Label htmlFor="projeto-value">Valor do projeto (faturamento)</Label>
+                <Input
+                  id="projeto-value"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={projetoValue}
+                  onChange={(event) => setProjetoValue(event.target.value)}
+                  className="mt-1.5 h-11 rounded-[10px]"
+                  placeholder="Ex.: 10000.00"
+                />
+              </div>
             </div>
 
             <div className="mt-6 flex items-center justify-end gap-2">
@@ -544,6 +671,7 @@ function AdminRouteComponent() {
                 onClick={() => {
                   setCommissionModal(null);
                   setCommissionValue("");
+                  setProjetoValue("");
                 }}
                 disabled={setCommissionMutation.isPending}
               >
@@ -604,26 +732,44 @@ function MetricRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function SimpleAdminLineChart({ data }: { data: { label: string; receita: number }[] }) {
-  const max = Math.max(1, ...data.map((d) => d.receita));
+function DualAdminLineChart({ data }: { data: { label: string; faturamento: number; comissoesPagas: number }[] }) {
+  const max = Math.max(1, ...data.flatMap((d) => [d.faturamento, d.comissoesPagas]));
   const w = 640;
   const h = 200;
   const pad = 28;
   const stepX = (w - pad * 2) / Math.max(1, data.length - 1);
-  const points = data.map((d, i) => {
+
+  const pointsFat = data.map((d, i) => {
     const x = pad + i * stepX;
-    const y = h - pad - (d.receita / max) * (h - pad * 2);
+    const y = h - pad - (d.faturamento / max) * (h - pad * 2);
     return [x, y] as const;
   });
-  const path = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0]} ${p[1]}`).join(" ");
+  const pointsCom = data.map((d, i) => {
+    const x = pad + i * stepX;
+    const y = h - pad - (d.comissoesPagas / max) * (h - pad * 2);
+    return [x, y] as const;
+  });
+
+  const pathFat = pointsFat.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0]} ${p[1]}`).join(" ");
+  const pathCom = pointsCom.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0]} ${p[1]}`).join(" ");
 
   return (
     <div className="mt-4 w-full">
+      <div className="flex flex-wrap gap-4 text-xs text-zinc-600 mb-2">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-0.5 w-6 bg-emerald-600" /> Faturamento
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-0.5 w-6 bg-blue-600" /> Comissões pagas
+        </span>
+      </div>
       <svg viewBox={`0 0 ${w} ${h}`} className="w-full h-[210px]">
-        <path d={path} fill="none" stroke="#16a34a" strokeWidth={2.5} strokeLinecap="round" />
-        {points.map((p, i) => (
-          <g key={`${p[0]}-${p[1]}`}>
-            <circle cx={p[0]} cy={p[1]} r={4} fill="#fff" stroke="#16a34a" strokeWidth={2} />
+        <path d={pathFat} fill="none" stroke="#16a34a" strokeWidth={2.5} strokeLinecap="round" />
+        <path d={pathCom} fill="none" stroke="#2563eb" strokeWidth={2.5} strokeLinecap="round" />
+        {pointsFat.map((p, i) => (
+          <g key={`lbl-${p[0]}`}>
+            <circle cx={p[0]} cy={p[1]} r={3} fill="#fff" stroke="#16a34a" strokeWidth={2} />
+            <circle cx={pointsCom[i]![0]} cy={pointsCom[i]![1]} r={3} fill="#fff" stroke="#2563eb" strokeWidth={2} />
             <text x={p[0]} y={h - 6} textAnchor="middle" fontSize="10" fill="#52525b">
               {data[i]?.label ?? ""}
             </text>
