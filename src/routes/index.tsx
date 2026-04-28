@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ativoLogoImage from "../../img/Ativo 1.png";
+import downArrowImage from "../../img/down-arrow.png";
 
 const CELULAR_HERO_URL = "https://i.ibb.co/Lzb68BpJ/Celular-Hero.png";
 const CTA_CADASTRO_URL = "https://i.ibb.co/3YF41xdm/CTA-Cadastro.png";
@@ -168,58 +169,33 @@ function Landing() {
       <section className="relative bg-white overflow-hidden max-[900px]:min-h-[calc(100vh-64px)]">
         <div className="absolute inset-0 -z-10 opacity-50"
              style={{ backgroundImage: "radial-gradient(circle at 20% 20%, color-mix(in oklab, var(--primary) 18%, transparent), transparent 50%)" }} />
-        <div className="max-w-7xl mx-auto px-6 py-20 md:py-28 grid lg:grid-cols-2 gap-12 items-center max-[900px]:min-h-[calc(100vh-64px)] max-[900px]:place-content-center max-[900px]:justify-items-center">
-          <div className="px-2 py-4 md:px-0 md:py-2 max-[900px]:text-center">
+        <div className="max-w-7xl mx-auto px-6 py-20 md:py-28 grid min-[1061px]:grid-cols-2 gap-12 items-center max-[1060px]:justify-items-center max-[900px]:min-h-[calc(100vh-64px)] max-[900px]:place-content-center">
+          <div className="px-2 py-4 md:px-0 md:py-2 max-[1060px]:text-center">
             <div className="inline-flex items-center justify-center rounded-full border border-[#A5D6A7] bg-[#E8F5E9] px-4 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#2E7D32] mb-6">
               Sem investimento • Sem experiência • <span className="text-[#1B8F3A]">100% online</span>
             </div>
-            <h1 className="text-3xl md:text-5xl lg:text-[56px] max-[900px]:text-5xl font-black leading-[0.98] tracking-[-0.015em] uppercase">
+            <h1 className="text-3xl md:text-5xl lg:text-[56px] max-[900px]:text-5xl max-[600px]:text-[42px] max-[400px]:text-4xl max-[360px]:text-[34px] font-black leading-[0.98] tracking-[-0.015em] uppercase">
               <span className="block text-[#111111]">Ganhe dinheiro</span>
               <span className="block text-[#1B8F3A]">Indicando pessoas</span>
               <span className="block text-[#1B8F3A]">ou empresas</span>
             </h1>
-            <div className="mt-5 relative inline-flex items-center pr-16 md:pr-20 max-[900px]:pr-14 max-[900px]:mx-auto">
-              <p className="inline-flex -rotate-[1deg] rounded-md bg-[#FBC02D] px-4 py-2 text-sm md:text-xl font-black uppercase leading-none text-black shadow-sm">
+            <div className="mt-5 relative inline-flex items-center pr-16 md:pr-20 max-[1060px]:pr-14 max-[1060px]:mx-auto">
+              <p className="inline-flex -rotate-[1deg] rounded-md bg-[#FBC02D] px-4 py-2 text-sm md:text-xl max-[600px]:text-base max-[440px]:text-[11px] max-[400px]:text-xs max-[360px]:text-[10px] font-black uppercase leading-none text-black shadow-sm">
                 Qualquer pessoa pode começar!
               </p>
-              <span
-                className="pointer-events-none absolute -top-11 -right-8 md:-right-10 h-14 w-14 md:h-16 md:w-16"
+              <img
+                src={downArrowImage}
+                alt=""
                 aria-hidden="true"
-              >
-                <svg viewBox="0 0 64 64" className="h-full w-full">
-                  <path
-                    d="M51 7 C 55 18, 54 31, 43 41 C 37 46, 30 49, 22 51"
-                    fill="none"
-                    stroke="#1B8F3A"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M22 51 L29 46"
-                    fill="none"
-                    stroke="#1B8F3A"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M22 51 L29 56"
-                    fill="none"
-                    stroke="#1B8F3A"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </span>
+                className="pointer-events-none absolute -top-11 -right-8 max-[800px]:-right-12 max-[500px]:!-right-3 max-[440px]:hidden md:-right-10 h-14 w-14 md:h-16 md:w-16 object-contain rotate-[30deg]"
+              />
             </div>
-            <p className="mt-6 text-base md:text-xl leading-snug text-[#333333] max-w-xl max-[900px]:mx-auto">
+            <p className="mt-6 text-base md:text-xl max-[600px]:text-lg max-[400px]:text-sm max-[360px]:text-xs leading-snug text-[#333333] max-w-xl max-[1060px]:mx-auto">
               Você indica, nós fechamos e você recebe <span className="font-semibold text-[#1B8F3A]">comissão</span> por cada negócio fechado.
               <br />
-              <span className="text-[#666666] text-base md:text-lg">Simples, transparente e sem precisar vender.</span>
+              <span className="text-[#666666] text-base md:text-lg max-[600px]:text-base max-[400px]:text-sm max-[360px]:text-xs">Simples, transparente e sem precisar vender.</span>
             </p>
-            <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:items-center max-[900px]:justify-center max-[900px]:items-center">
+            <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:items-center max-[1060px]:justify-center max-[1060px]:items-center">
               <Link to="/cadastro">
                 <Button
                   size="lg"
@@ -240,18 +216,14 @@ function Landing() {
                 </Button>
               </a>
             </div>
-            <div className="mt-8 flex items-center gap-6 text-sm text-muted-foreground max-[900px]:justify-center">
+            <div className="mt-8 flex items-center gap-6 text-sm max-[400px]:text-xs max-[360px]:text-[10px] text-muted-foreground max-[1060px]:justify-center">
               <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-primary" /> Cadastro grátis</div>
               <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-primary" /> Pagamento garantido</div>
             </div>
           </div>
 
-          <div className="relative flex justify-center lg:justify-end max-[900px]:justify-center max-[900px]:items-center max-[900px]:w-full">
-            <img
-              src={CELULAR_HERO_URL}
-              alt="Prévia do aplicativo no celular"
-              className="w-full max-w-[420px] max-[900px]:max-w-[500px] h-auto object-contain"
-            />
+          <div className="relative flex justify-center min-[1061px]:justify-end max-[1060px]:items-center max-[1060px]:w-full">
+            <img src={CELULAR_HERO_URL} alt="Prévia do aplicativo no celular" className="w-full max-w-[420px] h-auto object-contain" />
           </div>
         </div>
       </section>
@@ -438,8 +410,8 @@ function Landing() {
       </section>
 
       {/* CTA Final */}
-      <section id="cta-final" className="py-24 px-3 md:px-4">
-        <div className="max-w-[1400px] mx-auto rounded-3xl bg-[#065022] p-8 md:p-10 shadow-[0_18px_40px_-24px_rgba(6,80,34,0.8)] relative overflow-hidden">
+      <section id="cta-final" className="py-24 max-[400px]:py-16 px-3 md:px-4">
+        <div className="max-w-[1400px] mx-auto rounded-3xl bg-[#065022] p-8 md:p-10 max-[400px]:p-5 shadow-[0_18px_40px_-24px_rgba(6,80,34,0.8)] relative overflow-hidden">
           <div
             className="absolute inset-0 opacity-45"
             style={{ backgroundImage: "radial-gradient(circle at 72% 55%, rgba(34,197,94,0.45), rgba(34,197,94,0.18) 28%, transparent 56%)" }}
@@ -455,30 +427,30 @@ function Landing() {
           <div className="absolute bottom-12 right-[30%] h-16 w-16 rounded-full border border-white/20" />
           <div className="relative flex items-center justify-center">
             <div className="text-white text-center">
-              <span className="inline-flex rounded-full border border-[#84CC16] bg-transparent px-4 py-1.5 text-xs font-bold uppercase tracking-wide text-[#84CC16]">
+              <span className="inline-flex rounded-full border border-[#84CC16] bg-transparent px-4 py-1.5 max-[600px]:px-3 max-[600px]:py-1 text-xs max-[600px]:text-[11px] max-[400px]:text-[10px] font-bold uppercase tracking-wide text-[#84CC16]">
                 Chegou sua vez
               </span>
-              <h2 className="mt-5 text-4xl md:text-5xl font-bold leading-[1.05] tracking-tight">
+              <h2 className="mt-5 max-[400px]:mt-4 text-4xl md:text-5xl max-[600px]:text-[34px] max-[400px]:text-3xl max-[360px]:text-[26px] font-bold leading-[1.05] tracking-tight">
                 Comece agora e faça
                 <br />
                 sua <span className="text-[#84CC16]">primeira indicação</span>
               </h2>
-              <p className="mt-5 inline-flex items-center justify-center gap-2 text-lg text-white/90">
+              <p className="mt-5 max-[400px]:mt-4 inline-flex items-center justify-center gap-2 text-lg max-[600px]:text-base max-[400px]:text-sm max-[360px]:text-xs text-white/90">
                 <Clock3 className="h-5 w-5 text-white" />
                 Leva menos de 1 minuto para começar
               </p>
 
-              <div className="mt-7 flex flex-col items-center gap-4">
+              <div className="mt-7 max-[400px]:mt-5 flex flex-col items-center gap-4 max-[400px]:gap-3">
                 <Link to="/cadastro" className="inline-block">
                   <Button
                     size="lg"
-                    className="rounded-full h-14 px-8 text-2xl font-semibold bg-[#84CC16] hover:bg-[#73B312] text-white shadow-[0_10px_20px_-10px_rgba(132,204,22,0.9)]"
+                    className="rounded-full h-14 max-[600px]:h-12 max-[400px]:h-11 max-[360px]:h-10 px-8 max-[600px]:px-6 max-[400px]:px-5 max-[360px]:px-4 text-2xl max-[600px]:text-xl max-[400px]:text-base max-[360px]:text-sm font-semibold bg-[#84CC16] hover:bg-[#73B312] text-white shadow-[0_10px_20px_-10px_rgba(132,204,22,0.9)]"
                   >
                     Comece a ganhar agora
-                    <ArrowRight className="ml-3 h-5 w-5" />
+                    <ArrowRight className="ml-3 max-[400px]:ml-2 h-5 w-5 max-[400px]:h-4 max-[400px]:w-4" />
                   </Button>
                 </Link>
-                <a href="#como-funciona" className="inline-flex items-center gap-2 text-lg font-medium text-white/90 hover:text-white">
+                <a href="#como-funciona" className="inline-flex items-center gap-2 text-lg max-[600px]:text-base max-[400px]:text-sm max-[360px]:text-xs font-medium text-white/90 hover:text-white">
                   Ver como funciona
                   <ArrowRight className="h-4 w-4" />
                 </a>
@@ -628,21 +600,21 @@ function FaqCard({
 
 function SiteFooter() {
   return (
-    <footer className="bg-green-50 px-6 py-16 text-gray-900">
+    <footer className="bg-green-50 px-6 py-16 text-gray-900 max-[400px]:text-xs">
       <div className="max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10">
-          <div>
-            <div className="inline-flex items-center gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 min-[1061px]:grid-cols-4 gap-10 max-[600px]:grid-cols-2">
+          <div className="max-[1060px]:text-center max-[1060px]:mx-auto max-[600px]:col-span-2 max-[600px]:order-1">
+            <div className="inline-flex items-center gap-2 max-[1060px]:justify-center">
               <img
                 src={ativoLogoImage}
                 alt="ATOM TECH"
                 className="h-11 w-auto object-contain"
               />
             </div>
-            <p className="mt-4 text-sm text-gray-500 leading-relaxed max-w-xs">
+            <p className="mt-4 text-sm max-[400px]:text-xs text-gray-500 leading-relaxed max-w-xs max-[1060px]:mx-auto">
               Plataforma desenvolvida para que usuários indiquem pessoas e ganhem comissões de forma simples, prática e transparente.
             </p>
-            <div className="mt-5 flex items-center gap-3 text-gray-500">
+            <div className="mt-5 flex items-center gap-3 text-gray-500 max-[1060px]:justify-center">
               <a href="#" className="transition-colors hover:text-green-600" aria-label="Facebook">
                 <Facebook className="h-4 w-4" />
               </a>
@@ -667,6 +639,7 @@ function SiteFooter() {
               { label: "Dúvidas", href: "#duvidas" },
               { label: "Começar", href: "#cta-final" },
             ]}
+            className="max-[600px]:order-2"
           />
 
           <FooterLinkGroup
@@ -677,22 +650,23 @@ function SiteFooter() {
               { label: "Como funciona", href: "#" },
               { label: "Contato", href: "#" },
             ]}
+            className="max-[600px]:order-3"
           />
 
-          <div>
-            <h3 className="text-base font-semibold">Newsletter</h3>
-            <p className="mt-4 text-sm text-gray-500 leading-relaxed">
+          <div className="max-[1060px]:text-center max-[1060px]:mx-auto max-[600px]:col-span-2 max-[600px]:order-4">
+            <h3 className="text-base max-[400px]:text-sm font-semibold">Newsletter</h3>
+            <p className="mt-4 text-sm max-[400px]:text-xs text-gray-500 leading-relaxed">
               Receba dicas, atualizações da plataforma e estratégias para aumentar suas indicações e ganhos.
             </p>
-            <form className="mt-5 flex items-center gap-2">
+            <form className="mt-5 flex items-center gap-2 max-[1060px]:justify-center">
               <input
                 type="email"
                 placeholder="Seu e-mail"
-                className="h-11 flex-1 rounded-full border border-green-200 bg-white px-4 text-sm text-gray-900 placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-green-500"
+                className="h-11 flex-1 rounded-full border border-green-200 bg-white px-4 text-sm max-[400px]:text-xs text-gray-900 placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-green-500"
               />
               <button
                 type="submit"
-                className="inline-flex items-center gap-1 rounded-full bg-green-500 px-5 py-2 text-sm font-medium text-white transition hover:bg-green-600"
+                className="inline-flex items-center gap-1 rounded-full bg-green-500 px-5 py-2 text-sm max-[400px]:text-xs font-medium text-white transition hover:bg-green-600"
               >
                 Inscrever
                 <ArrowRight className="h-4 w-4" />
@@ -701,9 +675,9 @@ function SiteFooter() {
           </div>
         </div>
 
-        <div className="mt-12 border-t border-green-200 pt-6 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+        <div className="mt-12 border-t border-green-200 pt-6 flex flex-col md:flex-row items-center justify-between gap-4 text-sm max-[400px]:text-xs text-gray-500 max-[1060px]:text-center">
           <p>© 2025 ATOM TECH. Todos os direitos reservados.</p>
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-6 max-[400px]:gap-3">
             <a href="#" className="transition-colors hover:text-green-600">Política de Privacidade</a>
             <a href="#" className="transition-colors hover:text-green-600">Termos de Serviço</a>
             <a href="#" className="transition-colors hover:text-green-600">Segurança</a>
@@ -718,17 +692,19 @@ function SiteFooter() {
 function FooterLinkGroup({
   title,
   links,
+  className,
 }: {
   title: string;
   links: Array<{ label: string; href: string }>;
+  className?: string;
 }) {
   return (
-    <div>
-      <h3 className="text-base font-semibold">{title}</h3>
+    <div className={`max-[1060px]:text-center max-[1060px]:mx-auto ${className ?? ""}`}>
+      <h3 className="text-base max-[400px]:text-sm font-semibold">{title}</h3>
       <ul className="mt-4 space-y-3">
         {links.map((item) => (
           <li key={item.label}>
-            <a href={item.href} className="text-sm text-gray-500 transition-colors hover:text-green-600">
+            <a href={item.href} className="text-sm max-[400px]:text-xs text-gray-500 transition-colors hover:text-green-600">
               {item.label}
             </a>
           </li>

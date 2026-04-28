@@ -88,7 +88,9 @@ export type Database = {
       };
       indicacoes: {
         Row: {
+          conta_energia_url: string | null;
           created_at: string;
+          foto_padrao_url: string | null;
           id: number;
           nome_indicado: string;
           status: string;
@@ -101,7 +103,9 @@ export type Database = {
           whatsapp: string;
         };
         Insert: {
+          conta_energia_url?: string | null;
           created_at?: string;
+          foto_padrao_url?: string | null;
           id?: number;
           nome_indicado: string;
           status?: string;
@@ -114,7 +118,9 @@ export type Database = {
           whatsapp: string;
         };
         Update: {
+          conta_energia_url?: string | null;
           created_at?: string;
+          foto_padrao_url?: string | null;
           id?: number;
           nome_indicado?: string;
           status?: string;

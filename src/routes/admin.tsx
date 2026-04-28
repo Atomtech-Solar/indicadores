@@ -14,6 +14,7 @@ import {
   BadgeDollarSign,
   CalendarDays,
   PiggyBank,
+  ImageIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { RequireAdmin } from "@/components/auth/RequireAdmin";
@@ -34,7 +35,7 @@ export const Route = createFileRoute("/admin")({
 function AdminRouteComponent() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<"overview" | "usuarios" | "indicacoes" | "comissoes" | "relatorios" | "configuracoes">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "usuarios" | "indicacoes" | "comissoes" | "fotos" | "relatorios" | "configuracoes">("overview");
   const [commissionModal, setCommissionModal] = useState<{ indicacaoId: number; nomeIndicado: string } | null>(null);
   const [commissionValue, setCommissionValue] = useState("");
   const [projetoValue, setProjetoValue] = useState("");
@@ -71,8 +72,34 @@ function AdminRouteComponent() {
     refetchOnWindowFocus: false,
     queryFn: () =>
       callAdminOps<
-        { id: number; usuario_id: string; nome: string; email: string; whatsapp: string; role: "indicador" | "admin"; created_at: string }[]
+        {
+          id: number;
+          usuario_id: string;
+          nome: string;
+          email: string;
+          whatsapp: string;
+          role: "indicador" | "admin";
+          created_at: string;
+          is_disabled: boolean;
+        }[]
       >({ action: "list_users" }),
+  });
+
+  const { data: fotos = [], isLoading: loadingFotos } = useQuery({
+    queryKey: ["admin-fotos"],
+    retry: false,
+    refetchOnWindowFocus: false,
+    queryFn: () =>
+      callAdminOps<
+        {
+          id: number;
+          usuario_nome: string;
+          nome_indicado: string;
+          conta_energia_url: string | null;
+          foto_padrao_url: string | null;
+          created_at: string;
+        }[]
+      >({ action: "list_fotos" }),
   });
 
   const { data: indicacoes = [], isLoading: loadingIndicacoes } = useQuery({
@@ -137,8 +164,20 @@ function AdminRouteComponent() {
 
   const disableMutation = useMutation({
     mutationFn: (userId: string) => callAdminOpsMutation({ action: "disable_user", userId }),
-    onSuccess: () => toast.success("Usuário desativado com sucesso."),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"] });
+      toast.success("Usuário desativado com sucesso.");
+    },
     onError: () => toast.error("Não foi possível desativar o usuário."),
+  });
+
+  const reactivateMutation = useMutation({
+    mutationFn: (userId: string) => callAdminOpsMutation({ action: "reactivate_user", userId }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"] });
+      toast.success("Usuário reativado com sucesso.");
+    },
+    onError: () => toast.error("Não foi possível reativar o usuário."),
   });
 
   const updateIndicacaoMutation = useMutation({
@@ -209,6 +248,7 @@ function AdminRouteComponent() {
       { key: "usuarios", label: "Usuários", icon: Users },
       { key: "indicacoes", label: "Indicações", icon: TrendingUp },
       { key: "comissoes", label: "Comissões", icon: Wallet },
+      { key: "fotos", label: "Fotos", icon: ImageIcon },
       { key: "relatorios", label: "Relatórios", icon: BarChart3 },
       { key: "configuracoes", label: "Configurações", icon: Settings },
     ] as const,
@@ -259,7 +299,7 @@ function AdminRouteComponent() {
             </div>
           </header>
 
-          <div className="px-6 lg:px-10 py-8 space-y-6 max-w-[1400px]">
+          <div className="px-6 lg:px-10 py-8 space-y-6 max-w-[1400px] mx-auto">
             {activeTab === "overview" && (
               <div className="space-y-6">
                 <div className="grid sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-5 gap-4">
@@ -401,20 +441,47 @@ function AdminRouteComponent() {
                     <tbody className="divide-y divide-zinc-100">
                       {loadingUsuarios && <tr><td colSpan={6} className="px-5 py-6 text-center text-zinc-500">Carregando usuários...</td></tr>}
                       {usuarios.map((u) => (
-                        <tr key={u.usuario_id}>
+                        <tr key={u.usuario_id} className={u.is_disabled ? "bg-rose-50/70" : undefined}>
                           <td className="px-5 py-3">{u.nome}</td>
                           <td className="px-5 py-3">{u.email}</td>
                           <td className="px-5 py-3">{u.whatsapp}</td>
-                          <td className="px-5 py-3">{u.role}</td>
+                          <td className="px-5 py-3">
+                            <div className="flex items-center gap-2">
+                              <span>{u.role}</span>
+                              {u.is_disabled && (
+                                <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                                  desativado
+                                </span>
+                              )}
+                            </div>
+                          </td>
                           <td className="px-5 py-3">{formatDate(u.created_at)}</td>
                           <td className="px-5 py-3">
                             <div className="flex justify-end gap-2">
                               <Button size="sm" type="button" onClick={() => promoteMutation.mutate(u.usuario_id)} disabled={u.role === "admin" || promoteMutation.isPending}>
                                 Promover admin
                               </Button>
-                              <Button size="sm" type="button" variant="secondary" onClick={() => disableMutation.mutate(u.usuario_id)} disabled={disableMutation.isPending}>
-                                Desativar
-                              </Button>
+                              {u.is_disabled ? (
+                                <Button
+                                  size="sm"
+                                  type="button"
+                                  variant="secondary"
+                                  onClick={() => reactivateMutation.mutate(u.usuario_id)}
+                                  disabled={reactivateMutation.isPending}
+                                >
+                                  Reativar
+                                </Button>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  type="button"
+                                  variant="secondary"
+                                  onClick={() => disableMutation.mutate(u.usuario_id)}
+                                  disabled={disableMutation.isPending}
+                                >
+                                  Desativar
+                                </Button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -581,6 +648,60 @@ function AdminRouteComponent() {
                   </div>
                 </section>
               </div>
+            )}
+
+            {activeTab === "fotos" && (
+              <section className="space-y-4">
+                <div className="rounded-2xl border border-zinc-200 bg-white px-5 py-4">
+                  <h3 className="text-lg font-semibold text-zinc-900">Fotos anexadas pelos indicadores</h3>
+                  <p className="text-sm text-zinc-600 mt-1">
+                    Conta de energia e foto do padrão enviadas no cadastro da indicação.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  {loadingFotos && (
+                    <div className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-500">
+                      Carregando fotos...
+                    </div>
+                  )}
+                  {!loadingFotos &&
+                    fotos.map((f) => (
+                      <div key={f.id} className="rounded-2xl border border-zinc-200 bg-white p-4 md:p-5 shadow-sm">
+                        <div className="mb-3">
+                          <p className="text-sm text-zinc-600">Indicador</p>
+                          <p className="font-semibold text-zinc-900">{f.usuario_nome}</p>
+                          <p className="text-xs text-zinc-500 mt-1">
+                            Indicado: {f.nome_indicado} • {formatDate(f.created_at)}
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="rounded-lg border border-zinc-200 p-2">
+                            <p className="text-xs font-medium text-zinc-700 mb-2">Conta de energia</p>
+                            {f.conta_energia_url ? (
+                              <img src={f.conta_energia_url} alt="Conta de energia" className="h-36 w-full rounded-md object-cover" />
+                            ) : (
+                              <div className="h-36 rounded-md bg-zinc-100 grid place-items-center text-xs text-zinc-500">Sem foto</div>
+                            )}
+                          </div>
+                          <div className="rounded-lg border border-zinc-200 p-2">
+                            <p className="text-xs font-medium text-zinc-700 mb-2">Foto do padrão</p>
+                            {f.foto_padrao_url ? (
+                              <img src={f.foto_padrao_url} alt="Foto do padrão" className="h-36 w-full rounded-md object-cover" />
+                            ) : (
+                              <div className="h-36 rounded-md bg-zinc-100 grid place-items-center text-xs text-zinc-500">Sem foto</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  {!loadingFotos && fotos.length === 0 && (
+                    <div className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-500">
+                      Nenhuma foto anexada encontrada.
+                    </div>
+                  )}
+                </div>
+              </section>
             )}
 
             {activeTab === "relatorios" && (

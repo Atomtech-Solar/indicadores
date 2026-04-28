@@ -5,12 +5,14 @@ import {
   LayoutDashboard,
   Users,
   Wallet,
+  BookOpenText,
   Bell,
   Plus,
   TrendingUp,
   ArrowRight,
   Send,
   X,
+  Menu,
   LogOut,
   User,
   CircleDollarSign,
@@ -38,7 +40,7 @@ import type { Tables } from "@/lib/supabase/database.types";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 
 export const Route = createFileRoute("/dashboard")({
-  head: () => ({ meta: [{ title: "Dashboard — IndicaPro" }] }),
+  head: () => ({ meta: [{ title: "Dashboard — Atom Tech" }] }),
   component: DashboardRouteComponent,
 });
 
@@ -54,6 +56,7 @@ const navItems = [
   { key: "visao-geral", label: "Visão geral", icon: LayoutDashboard },
   { key: "indicacoes", label: "Indicações", icon: Users },
   { key: "comissoes", label: "Comissões", icon: Wallet },
+  { key: "tutorial", label: "Tutorial", icon: BookOpenText },
 ];
 
 function monthKey(iso: string) {
@@ -85,17 +88,45 @@ function last6MonthLabels() {
   return out;
 }
 
+function getMonthComparison(current: number, previous: number) {
+  if (previous <= 0) {
+    if (current <= 0) {
+      return { text: "— 0% vs mês anterior", className: "text-zinc-500" };
+    }
+    return { text: "↗ 100% vs mês anterior", className: "text-emerald-600" };
+  }
+
+  const pct = ((current - previous) / previous) * 100;
+  const abs = Math.abs(pct).toFixed(1).replace(".", ",");
+  if (pct > 0) return { text: `↗ ${abs}% vs mês anterior`, className: "text-emerald-600" };
+  if (pct < 0) return { text: `↘ ${abs}% vs mês anterior`, className: "text-rose-600" };
+  return { text: "→ 0% vs mês anterior", className: "text-zinc-500" };
+}
+
+function makeUploadId() {
+  const c = globalThis.crypto as Crypto | undefined;
+  if (c && typeof c.randomUUID === "function") {
+    return c.randomUUID();
+  }
+  const random = Math.random().toString(36).slice(2, 10);
+  return `${Date.now().toString(36)}-${random}`;
+}
+
 function Dashboard() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [activeTab, setActiveTab] = useState<"visao-geral" | "indicacoes" | "comissoes">("visao-geral");
+  const [showSidebarMenu, setShowSidebarMenu] = useState(false);
+  const [activeTab, setActiveTab] = useState<"visao-geral" | "indicacoes" | "comissoes" | "tutorial">("visao-geral");
   const [comissoesPeriodFilter, setComissoesPeriodFilter] = useState<"7d" | "30d" | "90d">("30d");
-  const [comissoesStatusFilter, setComissoesStatusFilter] = useState<"all" | "pago" | "pendente" | "disponivel">("all");
+  const [comissoesStatusFilter, setComissoesStatusFilter] = useState<"all" | "pago" | "pendente">("all");
   const [funnelFilter, setFunnelFilter] = useState<"today" | "week" | "month" | "custom">("month");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
+  const [expandedRecentIndicacaoId, setExpandedRecentIndicacaoId] = useState<number | null>(null);
+  const [expandedMyIndicacaoId, setExpandedMyIndicacaoId] = useState<number | null>(null);
+  const [expandedComissaoId, setExpandedComissaoId] = useState<number | null>(null);
 
   const { data: profile } = useQuery({
     queryKey: ["usuario"],
@@ -130,6 +161,7 @@ function Dashboard() {
 
   const now = new Date();
   const currentMonthPrefix = monthKey(now.toISOString());
+  const previousMonthPrefix = monthKey(new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString());
 
   const stats = useMemo(() => {
     const pagas = comissoes.filter((c) => c.status === "pago");
@@ -137,14 +169,27 @@ function Dashboard() {
     const mes = pagas
       .filter((g) => monthKey(g.created_at) === currentMonthPrefix)
       .reduce((s, g) => s + Number(g.valor), 0);
+    const mesAnterior = pagas
+      .filter((g) => monthKey(g.created_at) === previousMonthPrefix)
+      .reduce((s, g) => s + Number(g.valor), 0);
+    const totalAteMesAnterior = totalGanho - mes;
     const andamento = indicacoes
       .filter((i) => ["enviado", "analise", "negociacao"].includes(i.status))
       .reduce((s, i) => s + Number(i.valor_potencial), 0);
     const disponivel = comissoes
       .filter((c) => c.status === "disponivel")
       .reduce((s, c) => s + Number(c.valor), 0);
-    return { totalGanho, mes, andamento, disponivel };
-  }, [comissoes, indicacoes, currentMonthPrefix]);
+    return { totalGanho, mes, mesAnterior, totalAteMesAnterior, andamento, disponivel };
+  }, [comissoes, indicacoes, currentMonthPrefix, previousMonthPrefix]);
+
+  const totalGanhoComparison = useMemo(
+    () => getMonthComparison(stats.totalGanho, stats.totalAteMesAnterior),
+    [stats.totalGanho, stats.totalAteMesAnterior],
+  );
+  const mesComparison = useMemo(
+    () => getMonthComparison(stats.mes, stats.mesAnterior),
+    [stats.mes, stats.mesAnterior],
+  );
 
   const potencialAberto = useMemo(
     () =>
@@ -293,7 +338,7 @@ function Dashboard() {
 
   return (
     <div className="min-h-screen flex bg-background">
-      <aside className="hidden lg:flex w-64 shrink-0 flex-col bg-[#024b2e] border-r border-[#04653f] sticky top-0 h-screen">
+      <aside className="hidden min-[1101px]:flex w-64 shrink-0 flex-col bg-[#024b2e] border-r border-[#04653f] sticky top-0 h-screen">
         <div className="px-6 py-5 border-b border-[#04653f]">
           <Link to="/" className="flex items-center justify-center">
             <img
@@ -308,7 +353,7 @@ function Dashboard() {
             <button
               key={item.key}
               type="button"
-              onClick={() => setActiveTab(item.key as "visao-geral" | "indicacoes" | "comissoes")}
+              onClick={() => setActiveTab(item.key as "visao-geral" | "indicacoes" | "comissoes" | "tutorial")}
               className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition ${
                 activeTab === item.key
                   ? "bg-[#23a548] text-white"
@@ -322,7 +367,9 @@ function Dashboard() {
         </nav>
         <div className="p-4 border-t border-[#04653f]">
           <a
-            href="mailto:suporte@atomtech.com.br"
+            href="https://wa.me/556139781738"
+            target="_blank"
+            rel="noreferrer"
             className="mb-3 w-full inline-flex items-center justify-center rounded-lg border border-white/25 px-3 py-2 text-sm font-medium text-white/95 hover:bg-[#0b6a42] hover:text-white transition"
           >
             Falar com o suporte
@@ -337,11 +384,86 @@ function Dashboard() {
         </div>
       </aside>
 
+      <div
+        className={`min-[1101px]:hidden fixed inset-0 z-40 transition-all duration-300 ${
+          showSidebarMenu ? "pointer-events-auto" : "pointer-events-none"
+        }`}
+      >
+        <button
+          type="button"
+          aria-label="Fechar menu lateral"
+          className={`absolute inset-0 bg-black/35 transition-opacity duration-300 ${
+            showSidebarMenu ? "opacity-100" : "opacity-0"
+          }`}
+          onClick={() => setShowSidebarMenu(false)}
+        />
+        <aside
+          className={`absolute left-0 top-0 h-full w-[84vw] max-w-xs bg-[#024b2e] border-r border-[#04653f] shadow-2xl transition-transform duration-300 ${
+            showSidebarMenu ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          <div className="h-16 px-4 border-b border-[#04653f] flex items-center justify-between">
+            <img src="/img/Ativo 3.png" alt="ATOM TECH" className="h-10 w-auto object-contain" />
+            <button
+              type="button"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/25 text-white"
+              onClick={() => setShowSidebarMenu(false)}
+              aria-label="Fechar menu"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <nav className="px-3 py-5 space-y-1">
+            {navItems.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => {
+                  setActiveTab(item.key as "visao-geral" | "indicacoes" | "comissoes" | "tutorial");
+                  setShowSidebarMenu(false);
+                }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition ${
+                  activeTab === item.key
+                    ? "bg-[#23a548] text-white"
+                    : "text-white/90 hover:bg-[#0b6a42] hover:text-white"
+                }`}
+              >
+                <item.icon className="h-[18px] w-[18px]" />
+                {item.label}
+              </button>
+            ))}
+          </nav>
+          <div className="p-4 border-t border-[#04653f]">
+            <a
+              href="https://wa.me/556139781738"
+              target="_blank"
+              rel="noreferrer"
+              className="mb-3 w-full inline-flex items-center justify-center rounded-lg border border-white/25 px-3 py-2 text-sm font-medium text-white/95 hover:bg-[#0b6a42] hover:text-white transition"
+            >
+              Falar com o suporte
+            </a>
+            <Button size="sm" onClick={() => { setShowModal(true); setShowSidebarMenu(false); }} className="w-full rounded-lg h-9">
+              Nova indicação
+            </Button>
+          </div>
+        </aside>
+      </div>
+
       <main className="flex-1 min-w-0 bg-white">
         <header className="bg-card border-b border-border px-6 lg:px-10 py-4 flex items-center justify-between sticky top-0 z-20">
-          <div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              className="min-[1101px]:hidden inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border text-foreground transition hover:bg-muted"
+              onClick={() => setShowSidebarMenu(true)}
+              aria-label="Abrir menu lateral"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <div>
             <p className="text-xs text-muted-foreground">Bem-vindo de volta</p>
             <h1 className="text-lg font-semibold">Olá, {nome}</h1>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -396,7 +518,7 @@ function Dashboard() {
           </div>
         </header>
 
-        <div className="px-6 lg:px-10 py-8 space-y-7 max-w-[1400px]">
+        <div className="px-6 lg:px-10 py-8 space-y-7 max-w-[1400px] mx-auto">
           {loading && (
             <p className="text-sm text-muted-foreground">Atualizando seus dados…</p>
           )}
@@ -411,7 +533,7 @@ function Dashboard() {
               iconWrapClassName="bg-emerald-100 text-emerald-700"
               valueClassName="text-emerald-600"
               footerLabel="Todas as comissões recebidas"
-              footerContent={<span className="text-emerald-600">↗ 24% vs mês anterior</span>}
+              footerContent={<span className={totalGanhoComparison.className}>{totalGanhoComparison.text}</span>}
             />
             <StatCard
               label="Ganho este mês"
@@ -422,7 +544,7 @@ function Dashboard() {
               footerLabel={`Comissões recebidas em ${now.toLocaleDateString("pt-BR", {
                 month: "long",
               })}`}
-              footerContent={<span className="text-blue-600">↗ 18% vs mês anterior</span>}
+              footerContent={<span className={mesComparison.className}>{mesComparison.text}</span>}
             />
             <StatCard
               label="Em andamento"
@@ -447,9 +569,10 @@ function Dashboard() {
               footerContent={
                 <button
                   type="button"
+                  onClick={() => setActiveTab("comissoes")}
                   className="inline-flex items-center rounded-full bg-emerald-700 px-3 py-1 text-[11px] font-semibold text-white hover:bg-emerald-800 transition"
                 >
-                  Sacar agora
+                  Ver agora
                 </button>
               }
             />
@@ -487,7 +610,7 @@ function Dashboard() {
           </div>
 
           <Section title="Indicações recentes" subtitle="Suas últimas 8 indicações">
-            <div className="overflow-x-auto -mx-6 lg:-mx-7 px-6 lg:px-7">
+            <div className="max-[500px]:hidden overflow-x-auto -mx-6 lg:-mx-7 px-6 lg:px-7">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground border-b border-border">
@@ -520,6 +643,50 @@ function Dashboard() {
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            <div className="hidden max-[500px]:grid gap-3">
+              {indicacoes.slice(0, 8).map((i) => {
+                const isExpanded = expandedRecentIndicacaoId === i.id;
+                return (
+                  <div key={i.id} className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="font-semibold text-zinc-900">{i.nome_indicado}</p>
+                      <StatusBadge status={dbStatusToUi(i.status)} />
+                    </div>
+                    <div className="mt-3">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedRecentIndicacaoId(isExpanded ? null : i.id)}
+                        className="inline-flex items-center rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 transition"
+                      >
+                        {isExpanded ? "Ocultar" : "Ver mais"}
+                      </button>
+                    </div>
+                    {isExpanded && (
+                      <div className="mt-3 rounded-lg bg-zinc-50 p-3 text-sm text-zinc-700 space-y-1.5">
+                        <p>
+                          <span className="font-medium text-zinc-900">Tipo:</span> {mapTipoDbToUi(i.tipo)}
+                        </p>
+                        <p>
+                          <span className="font-medium text-zinc-900">Status:</span> {dbStatusToUi(i.status)}
+                        </p>
+                        <p>
+                          <span className="font-medium text-zinc-900">Valor potencial:</span> {formatPotentialValue(i.valor_potencial)}
+                        </p>
+                        <p>
+                          <span className="font-medium text-zinc-900">Data:</span> {formatDate(i.created_at)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {!loadingInd && indicacoes.length === 0 && (
+                <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
+                  Você ainda não tem indicações recentes.
+                </div>
+              )}
             </div>
           </Section>
 
@@ -582,7 +749,7 @@ function Dashboard() {
                     <h3 className="text-xl font-bold text-zinc-900">Funil de indicações</h3>
                     <p className="text-sm text-muted-foreground mt-1">Acompanhe o status das suas indicações</p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="grid grid-cols-2 gap-2 w-full md:w-auto md:min-w-[280px]">
                     <button
                       type="button"
                       onClick={() => setFunnelFilter("today")}
@@ -684,7 +851,7 @@ function Dashboard() {
               </div>
 
               <Section title="Minhas indicações" subtitle="Lista completa das suas indicações">
-              <div className="overflow-x-auto -mx-6 lg:-mx-7 px-6 lg:px-7">
+              <div className="max-[500px]:hidden overflow-x-auto -mx-6 lg:-mx-7 px-6 lg:px-7">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs text-muted-foreground border-b border-border">
@@ -709,6 +876,50 @@ function Dashboard() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+
+              <div className="hidden max-[500px]:grid gap-3">
+                {indicacoesTabRows.map((i) => {
+                  const isExpanded = expandedMyIndicacaoId === i.id;
+                  return (
+                    <div key={i.id} className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="font-semibold text-zinc-900">{i.nome_indicado}</p>
+                        <StatusBadge status={dbStatusToUi(i.status)} />
+                      </div>
+                      <div className="mt-3">
+                        <button
+                          type="button"
+                          onClick={() => setExpandedMyIndicacaoId(isExpanded ? null : i.id)}
+                          className="inline-flex items-center rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 transition"
+                        >
+                          {isExpanded ? "Ocultar" : "Ver mais"}
+                        </button>
+                      </div>
+                      {isExpanded && (
+                        <div className="mt-3 rounded-lg bg-zinc-50 p-3 text-sm text-zinc-700 space-y-1.5">
+                          <p>
+                            <span className="font-medium text-zinc-900">Tipo:</span> {mapTipoDbToUi(i.tipo)}
+                          </p>
+                          <p>
+                            <span className="font-medium text-zinc-900">Status:</span> {dbStatusToUi(i.status)}
+                          </p>
+                          <p>
+                            <span className="font-medium text-zinc-900">Valor potencial:</span> {formatPotentialValue(i.valor_potencial)}
+                          </p>
+                          <p>
+                            <span className="font-medium text-zinc-900">Data:</span> {formatDate(i.created_at)}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {!loadingInd && indicacoesTabRows.length === 0 && (
+                  <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
+                    Você ainda não tem indicações nessa visualização.
+                  </div>
+                )}
               </div>
               </Section>
             </>
@@ -772,19 +983,18 @@ function Dashboard() {
                     <select
                       value={comissoesStatusFilter}
                       onChange={(e) =>
-                        setComissoesStatusFilter(e.target.value as "all" | "pago" | "pendente" | "disponivel")
+                        setComissoesStatusFilter(e.target.value as "all" | "pago" | "pendente")
                       }
                       className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-700"
                     >
-                      <option value="all">Todos</option>
+                      <option value="all">Tudo</option>
                       <option value="pago">Pago</option>
                       <option value="pendente">Pendente</option>
-                      <option value="disponivel">Disponível</option>
                     </select>
                   </div>
                 </div>
 
-                <div className="overflow-x-auto">
+                <div className="max-[550px]:hidden overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-left text-zinc-800 border-b border-zinc-200">
@@ -854,6 +1064,71 @@ function Dashboard() {
                     </tbody>
                   </table>
                 </div>
+
+                <div className="hidden max-[550px]:grid gap-3 p-4">
+                  {comissoesFiltradasRpc.map((c) => {
+                    const isExpanded = expandedComissaoId === c.id;
+                    const statusLabel = c.status === "pago" ? "Pago" : c.status === "pendente" ? "Pendente" : "Disponível";
+                    return (
+                      <div key={c.id} className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-semibold text-zinc-900">{c.nome_indicado || `Comissão #${c.id}`}</p>
+                          <span
+                            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
+                              c.status === "pago"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : c.status === "pendente"
+                                  ? "bg-amber-100 text-amber-700"
+                                  : "bg-blue-100 text-blue-700"
+                            }`}
+                          >
+                            <span
+                              className={`mr-1.5 h-2 w-2 rounded-full ${
+                                c.status === "pago"
+                                  ? "bg-emerald-500"
+                                  : c.status === "pendente"
+                                    ? "bg-amber-500"
+                                    : "bg-blue-500"
+                              }`}
+                            />
+                            {statusLabel}
+                          </span>
+                        </div>
+                        <div className="mt-3">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedComissaoId(isExpanded ? null : c.id)}
+                            className="inline-flex items-center rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 transition"
+                          >
+                            {isExpanded ? "Ocultar" : "Ver mais"}
+                          </button>
+                        </div>
+                        {isExpanded && (
+                          <div className="mt-3 rounded-lg bg-zinc-50 p-3 text-sm text-zinc-700 space-y-1.5">
+                            <p>
+                              <span className="font-medium text-zinc-900">Data:</span>{" "}
+                              {new Date(c.created_at).toLocaleDateString("pt-BR", {
+                                day: "2-digit",
+                                month: "2-digit",
+                              })}
+                            </p>
+                            <p>
+                              <span className="font-medium text-zinc-900">Valor ganho:</span> {formatBRL(Number(c.valor))}
+                            </p>
+                            <p>
+                              <span className="font-medium text-zinc-900">Status:</span> {statusLabel}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {comissoesFiltradasRpc.length === 0 && (
+                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600 text-center">
+                      Nenhum ganho encontrado para os filtros selecionados.
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm p-4 md:p-5 flex items-start gap-3">
@@ -869,6 +1144,55 @@ function Dashboard() {
                   <p className="text-sm text-zinc-600">
                     O saldo pendente considera só comissões marcadas como pendente; o total já pago,
                     só as marcadas como pago.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "tutorial" && (
+            <div>
+              <div className="mb-5">
+                <h3 className="text-lg font-semibold">Aprenda a ofertar</h3>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  Conteúdo introdutório para apresentar as soluções da ATOM TECH
+                </p>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+                  <h4 className="text-base font-semibold text-zinc-900">Painel solar</h4>
+                  <div className="mt-3 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100">
+                    <iframe
+                      className="aspect-video w-full"
+                      src="https://www.youtube.com/embed/_W1nQT7az8c"
+                      title="Tutorial de oferta de painel solar"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      referrerPolicy="strict-origin-when-cross-origin"
+                      allowFullScreen
+                    />
+                  </div>
+                  <p className="mt-2 text-sm text-zinc-600">
+                    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer viverra, nisl ac
+                    ultrices feugiat, mauris massa sollicitudin nunc, sed volutpat risus nibh id ante.
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+                  <h4 className="text-base font-semibold text-zinc-900">Carregador veicular</h4>
+                  <div className="mt-3 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100">
+                    <iframe
+                      className="aspect-video w-full"
+                      src="https://www.youtube.com/embed/GgX02LzY240"
+                      title="Tutorial de oferta de carregador veicular"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      referrerPolicy="strict-origin-when-cross-origin"
+                      allowFullScreen
+                    />
+                  </div>
+                  <p className="mt-2 text-sm text-zinc-600">
+                    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce ullamcorper orci et
+                    nibh tincidunt, sit amet efficitur sem suscipit. Curabitur hendrerit magna at
+                    placerat blandit.
                   </p>
                 </div>
               </div>
@@ -1040,12 +1364,72 @@ function NovaIndicacaoModal({
   queryClient: ReturnType<typeof useQueryClient>;
 }) {
   const [form, setForm] = useState({ nome: "", whatsapp: "", tipo: "Pessoa" as IndicacaoTipo });
+  const [contaEnergiaFile, setContaEnergiaFile] = useState<File | null>(null);
+  const [contaEnergiaError, setContaEnergiaError] = useState<string | null>(null);
+  const [fotoPadraoFile, setFotoPadraoFile] = useState<File | null>(null);
+  const [fotoPadraoError, setFotoPadraoError] = useState<string | null>(null);
 
   const mutation = useMutation({
     mutationFn: async () => {
       const { data: uid, error: rpcErr } = await supabase.rpc("get_my_usuario_id");
       if (rpcErr) throw rpcErr;
       if (uid == null) throw new Error("Complete seu perfil antes de indicar.");
+
+      const {
+        data: { user: authUser },
+        error: authError,
+      } = await supabase.auth.getUser();
+      if (authError || !authUser?.id) {
+        throw new Error("Não foi possível validar sua sessão para upload.");
+      }
+
+      let contaEnergiaPath: string | null = null;
+      if (contaEnergiaFile) {
+        if (!contaEnergiaFile.type.startsWith("image/")) {
+          throw new Error("Envie apenas imagens no campo da conta de energia.");
+        }
+        if (contaEnergiaFile.size > 5 * 1024 * 1024) {
+          throw new Error("A imagem da conta de energia deve ter no máximo 5MB.");
+        }
+
+        const extension = contaEnergiaFile.name.split(".").pop()?.toLowerCase() ?? "jpg";
+        const filePath = `${authUser.id}/${Date.now()}-${makeUploadId()}.${extension}`;
+        const { error: uploadError } = await supabase.storage
+          .from("indicacoes-comprovantes")
+          .upload(filePath, contaEnergiaFile, {
+            upsert: false,
+            contentType: contaEnergiaFile.type,
+          });
+
+        if (uploadError) {
+          throw new Error(`Upload da conta de energia falhou: ${uploadError.message}`);
+        }
+        contaEnergiaPath = filePath;
+      }
+
+      let fotoPadraoPath: string | null = null;
+      if (fotoPadraoFile) {
+        if (!fotoPadraoFile.type.startsWith("image/")) {
+          throw new Error("Envie apenas imagens no campo da foto do padrão.");
+        }
+        if (fotoPadraoFile.size > 5 * 1024 * 1024) {
+          throw new Error("A foto do padrão deve ter no máximo 5MB.");
+        }
+
+        const extension = fotoPadraoFile.name.split(".").pop()?.toLowerCase() ?? "jpg";
+        const filePath = `${authUser.id}/${Date.now()}-${makeUploadId()}.${extension}`;
+        const { error: uploadError } = await supabase.storage
+          .from("indicacoes-comprovantes")
+          .upload(filePath, fotoPadraoFile, {
+            upsert: false,
+            contentType: fotoPadraoFile.type,
+          });
+
+        if (uploadError) {
+          throw new Error(`Upload da foto do padrão falhou: ${uploadError.message}`);
+        }
+        fotoPadraoPath = filePath;
+      }
 
       const { data, error } = await supabase
         .from("indicacoes")
@@ -1054,6 +1438,8 @@ function NovaIndicacaoModal({
           nome_indicado: form.nome.trim(),
           whatsapp: form.whatsapp.trim(),
           tipo: mapTipoToDb(form.tipo),
+          conta_energia_url: contaEnergiaPath,
+          foto_padrao_url: fotoPadraoPath,
         })
         .select("id")
         .single();
@@ -1134,6 +1520,75 @@ function NovaIndicacaoModal({
               onChange={(e) => setForm({ ...form, whatsapp: maskWhatsapp(e.target.value) })}
               className="mt-1.5 rounded-[10px] h-11"
             />
+          </div>
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+            <p className="text-xs text-emerald-800">
+              Caso não saiba como tirar a foto, vá na aba de tutorial.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="m-conta-energia" className="text-sm font-medium">
+              Suba a foto da conta de energia
+            </Label>
+            <Input
+              id="m-conta-energia"
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                setContaEnergiaError(null);
+                if (!file) {
+                  setContaEnergiaFile(null);
+                  return;
+                }
+                if (!file.type.startsWith("image/")) {
+                  setContaEnergiaFile(null);
+                  setContaEnergiaError("Envie apenas arquivo de imagem.");
+                  return;
+                }
+                if (file.size > 5 * 1024 * 1024) {
+                  setContaEnergiaFile(null);
+                  setContaEnergiaError("Limite máximo de 5MB.");
+                  return;
+                }
+                setContaEnergiaFile(file);
+              }}
+              className="mt-1.5 rounded-[10px] h-11 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-50 file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-emerald-700"
+            />
+            <p className="mt-1 text-xs text-zinc-500">Formato: qualquer imagem • Limite: 5MB</p>
+            {contaEnergiaError && <p className="mt-1 text-xs text-rose-600">{contaEnergiaError}</p>}
+          </div>
+          <div>
+            <Label htmlFor="m-foto-padrao" className="text-sm font-medium">
+              Suba a foto do padrão
+            </Label>
+            <Input
+              id="m-foto-padrao"
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                setFotoPadraoError(null);
+                if (!file) {
+                  setFotoPadraoFile(null);
+                  return;
+                }
+                if (!file.type.startsWith("image/")) {
+                  setFotoPadraoFile(null);
+                  setFotoPadraoError("Envie apenas arquivo de imagem.");
+                  return;
+                }
+                if (file.size > 5 * 1024 * 1024) {
+                  setFotoPadraoFile(null);
+                  setFotoPadraoError("Limite máximo de 5MB.");
+                  return;
+                }
+                setFotoPadraoFile(file);
+              }}
+              className="mt-1.5 rounded-[10px] h-11 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-50 file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-emerald-700"
+            />
+            <p className="mt-1 text-xs text-zinc-500">Formato: qualquer imagem • Limite: 5MB</p>
+            {fotoPadraoError && <p className="mt-1 text-xs text-rose-600">{fotoPadraoError}</p>}
           </div>
           <Button
             type="submit"

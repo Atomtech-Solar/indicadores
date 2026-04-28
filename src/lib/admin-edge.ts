@@ -5,9 +5,11 @@ type AdminAction =
   | { action: "list_users" }
   | { action: "set_user_role"; userId: string; role: "indicador" | "admin" }
   | { action: "disable_user"; userId: string }
+  | { action: "reactivate_user"; userId: string }
   | { action: "list_indicacoes" }
   | { action: "update_indicacao_status"; indicacaoId: number; status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido" }
   | { action: "list_comissoes" }
+  | { action: "list_fotos" }
   | { action: "update_comissao_status"; comissaoId: number; status: "pendente" | "disponivel" | "pago" | "cancelado" }
   | { action: "reports" };
 
@@ -19,7 +21,7 @@ export async function callAdminOps<T>(payload: AdminAction): Promise<T> {
   return data.data as T;
 }
 
-export async function callAdminOpsMutation(payload: Exclude<AdminAction, { action: "overview" | "list_users" | "list_indicacoes" | "list_comissoes" | "reports" }>): Promise<void> {
+export async function callAdminOpsMutation(payload: Exclude<AdminAction, { action: "overview" | "list_users" | "list_indicacoes" | "list_comissoes" | "list_fotos" | "reports" }>): Promise<void> {
   const { data, error } = await supabase.functions.invoke("admin-ops", { body: payload });
   if (error || data?.error) throw new Error("Não foi possível concluir a operação administrativa.");
 }

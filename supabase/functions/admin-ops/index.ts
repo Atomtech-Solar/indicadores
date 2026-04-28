@@ -16,9 +16,11 @@ type ActionPayload =
   | { action: "list_users" }
   | { action: "set_user_role"; userId: string; role: "indicador" | "admin" }
   | { action: "disable_user"; userId: string }
+  | { action: "reactivate_user"; userId: string }
   | { action: "list_indicacoes" }
   | { action: "update_indicacao_status"; indicacaoId: number; status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido" }
   | { action: "list_comissoes" }
+  | { action: "list_fotos" }
   | { action: "update_comissao_status"; comissaoId: number; status: "pendente" | "disponivel" | "pago" | "cancelado" }
   | { action: "reports" };
 
@@ -193,8 +195,13 @@ async function listUsers(adminClient: SupabaseClient) {
   ]);
 
   const emailMap = new Map<string, string>();
+  const disabledMap = new Map<string, boolean>();
+  const nowMs = Date.now();
   for (const u of usersResult.data.users ?? []) {
     if (u.id && u.email) emailMap.set(u.id, u.email);
+    const bannedUntil = (u as { banned_until?: string | null }).banned_until;
+    const isDisabled = Boolean(bannedUntil && new Date(bannedUntil).getTime() > nowMs);
+    if (u.id) disabledMap.set(u.id, isDisabled);
   }
 
   return (usuarios ?? []).map((u) => ({
@@ -205,7 +212,43 @@ async function listUsers(adminClient: SupabaseClient) {
     role: u.role ?? "indicador",
     created_at: u.created_at,
     email: emailMap.get(u.usuario_id) ?? "-",
+    is_disabled: disabledMap.get(u.usuario_id) ?? false,
   }));
+}
+
+async function listFotos(adminClient: SupabaseClient) {
+  const [{ data: indicacoes }, { data: usuarios }] = await Promise.all([
+    adminClient
+      .from("indicacoes")
+      .select("id, usuario_id, nome_indicado, conta_energia_url, foto_padrao_url, created_at")
+      .or("conta_energia_url.not.is.null,foto_padrao_url.not.is.null")
+      .order("created_at", { ascending: false }),
+    adminClient.from("usuarios").select("id, nome"),
+  ]);
+
+  const userNameById = new Map<number, string>((usuarios ?? []).map((u) => [u.id, u.nome ?? "Sem nome"]));
+
+  const withUrls = await Promise.all(
+    (indicacoes ?? []).map(async (i) => {
+      const contaEnergiaUrl = i.conta_energia_url
+        ? (await adminClient.storage.from("indicacoes-comprovantes").createSignedUrl(i.conta_energia_url, 60 * 60)).data?.signedUrl ?? null
+        : null;
+      const fotoPadraoUrl = i.foto_padrao_url
+        ? (await adminClient.storage.from("indicacoes-comprovantes").createSignedUrl(i.foto_padrao_url, 60 * 60)).data?.signedUrl ?? null
+        : null;
+
+      return {
+        id: i.id,
+        usuario_nome: userNameById.get(i.usuario_id) ?? "Usuário",
+        nome_indicado: i.nome_indicado,
+        conta_energia_url: contaEnergiaUrl,
+        foto_padrao_url: fotoPadraoUrl,
+        created_at: i.created_at,
+      };
+    }),
+  );
+
+  return withUrls;
 }
 
 async function listIndicacoes(adminClient: SupabaseClient) {
@@ -317,6 +360,11 @@ Deno.serve(async (req: Request) => {
         if (error) throw error;
         return jsonResponse(req, 200, { message: "Usuário desativado com sucesso." });
       }
+      case "reactivate_user": {
+        const { error } = await adminClient.auth.admin.updateUserById(payload.userId, { ban_duration: "none" });
+        if (error) throw error;
+        return jsonResponse(req, 200, { message: "Usuário reativado com sucesso." });
+      }
       case "list_indicacoes":
         return jsonResponse(req, 200, { data: await listIndicacoes(adminClient) });
       case "update_indicacao_status": {
@@ -326,6 +374,8 @@ Deno.serve(async (req: Request) => {
       }
       case "list_comissoes":
         return jsonResponse(req, 200, { data: await listComissoes(adminClient) });
+      case "list_fotos":
+        return jsonResponse(req, 200, { data: await listFotos(adminClient) });
       case "update_comissao_status": {
         const patch: Record<string, unknown> = { status: payload.status };
         if (payload.status === "pago") patch.data_pagamento = new Date().toISOString();
