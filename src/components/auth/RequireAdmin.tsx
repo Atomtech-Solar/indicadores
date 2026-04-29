@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/components/auth/auth-context";
-import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
 
 /** Rotas exclusivas do administrador — indicadores são redirecionados para /dashboard. */
 export function RequireAdmin({ children }: { children: React.ReactNode }) {
@@ -43,7 +42,11 @@ export function RequireAdmin({ children }: { children: React.ReactNode }) {
   }, [authReady, user, isAdmin, navigate, location.pathname, location.searchStr]);
 
   if (!authReady) {
-    return <AuthLoadingScreen active message="Validando permissões…" />;
+    return (
+      <div className="min-h-screen grid place-items-center px-6 bg-background">
+        <p className="text-sm text-muted-foreground">Validando permissões…</p>
+      </div>
+    );
   }
 
   if (!user) {
@@ -51,7 +54,11 @@ export function RequireAdmin({ children }: { children: React.ReactNode }) {
   }
 
   if (!isAdmin) {
-    return <AuthLoadingScreen active={false} message="Redirecionando para o painel do indicador…" />;
+    return (
+      <div className="min-h-screen grid place-items-center px-6 bg-background">
+        <p className="text-sm text-muted-foreground">Redirecionando…</p>
+      </div>
+    );
   }
 
   return <>{children}</>;

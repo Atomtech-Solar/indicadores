@@ -24,6 +24,7 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
 import ativoLogoImage from "../../img/Ativo 1.png";
 import downArrowImage from "../../img/down-arrow.png";
 
@@ -59,6 +60,16 @@ export const Route = createFileRoute("/")({
 
 function Landing() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [splashPhase, setSplashPhase] = useState<"loading" | "reveal" | "ready">("loading");
+
+  useEffect(() => {
+    const toReveal = window.setTimeout(() => setSplashPhase("reveal"), 2200);
+    const toReady = window.setTimeout(() => setSplashPhase("ready"), 2600);
+    return () => {
+      window.clearTimeout(toReveal);
+      window.clearTimeout(toReady);
+    };
+  }, []);
 
   useEffect(() => {
     document.body.style.overflow = isMobileMenuOpen ? "hidden" : "";
@@ -66,6 +77,10 @@ function Landing() {
       document.body.style.overflow = "";
     };
   }, [isMobileMenuOpen]);
+
+  if (splashPhase !== "ready") {
+    return <AuthLoadingScreen active={splashPhase === "loading"} message="Carregando…" />;
+  }
 
   return (
     <div className="min-h-screen bg-white">

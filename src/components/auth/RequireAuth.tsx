@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/components/auth/auth-context";
-import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
 
 /** Rotas exclusivas do indicador — administradores são redirecionados para /admin. */
 export function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -43,7 +42,11 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   }, [authReady, user, isAdmin, navigate, location.pathname, location.searchStr]);
 
   if (!authReady) {
-    return <AuthLoadingScreen active message="Verificando sua sessão…" />;
+    return (
+      <div className="min-h-screen grid place-items-center px-6 bg-background">
+        <p className="text-sm text-muted-foreground">Verificando autenticação…</p>
+      </div>
+    );
   }
 
   if (!user) {
@@ -51,7 +54,11 @@ export function RequireAuth({ children }: { children: React.ReactNode }) {
   }
 
   if (isAdmin) {
-    return <AuthLoadingScreen active={false} message="Redirecionando para o painel administrativo…" />;
+    return (
+      <div className="min-h-screen grid place-items-center px-6 bg-background">
+        <p className="text-sm text-muted-foreground">Redirecionando…</p>
+      </div>
+    );
   }
 
   return <>{children}</>;

@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/components/auth/auth-context";
-import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
 import { resolvePostLoginDestination } from "@/lib/auth-routes";
 
 type LoginSearch = { redirect?: string; email?: string };
@@ -88,11 +87,19 @@ function Login() {
   };
 
   if (!authReady) {
-    return <AuthLoadingScreen active message="Verificando sessão…" />;
+    return (
+      <div className="min-h-screen grid place-items-center px-6 bg-gradient-hero">
+        <p className="text-sm text-muted-foreground">Verificando sessão…</p>
+      </div>
+    );
   }
 
   if (user) {
-    return <AuthLoadingScreen active={false} message="Redirecionando…" />;
+    return (
+      <div className="min-h-screen grid place-items-center px-6 bg-gradient-hero">
+        <p className="text-sm text-muted-foreground">Redirecionando…</p>
+      </div>
+    );
   }
 
   return (
