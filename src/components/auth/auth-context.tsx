@@ -31,6 +31,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authReady, setAuthReady] = useState(false);
   const roleFetchSeqRef = useRef(0);
   const lastUserIdRef = useRef<string | null>(null);
+  /** Recarga por atalho (F5 / Ctrl+R / Cmd+R): não limpa sessão no pagehide. Botão do browser ainda pode encerrar sessão. */
+  const reloadViaKeyboardRef = useRef(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -120,6 +122,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       isMounted = false;
       subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "F5") {
+        reloadViaKeyboardRef.current = true;
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")) {
+        reloadViaKeyboardRef.current = true;
+      }
+    };
+    const onPageHide = (ev: PageTransitionEvent) => {
+      if (ev.persisted) return;
+      if (reloadViaKeyboardRef.current) {
+        reloadViaKeyboardRef.current = false;
+        return;
+      }
+      void supabase.auth.signOut({ scope: "local" });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("pagehide", onPageHide);
     };
   }, []);
 
