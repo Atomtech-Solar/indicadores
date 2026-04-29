@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { LayoutDashboard, Users, Wallet, Pencil, ShieldCheck, CreditCard, Menu, X } from "lucide-react";
+import { LayoutDashboard, Users, Wallet, Pencil, CreditCard, Menu, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { fetchUsuarioRow, upsertUsuarioProfile } from "@/lib/usuario-profile";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { useAuth } from "@/components/auth/auth-context";
+import { supabase } from "@/lib/supabase/client";
 
 export const Route = createFileRoute("/perfil")({
   head: () => ({
@@ -31,6 +32,10 @@ function PerfilPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState({ nome: "", whatsapp: "" });
   const [showSidebarMenu, setShowSidebarMenu] = useState(false);
+  const [fotoPerfilPath, setFotoPerfilPath] = useState<string | null>(null);
+  const [fotoPerfilSignedUrl, setFotoPerfilSignedUrl] = useState<string | null>(null);
+  const [fotoPerfilFile, setFotoPerfilFile] = useState<File | null>(null);
+  const [fotoPerfilError, setFotoPerfilError] = useState<string | null>(null);
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ["usuario"],
@@ -42,7 +47,22 @@ function PerfilPage() {
       nome: profile?.nome ?? "",
       whatsapp: profile?.whatsapp ?? "",
     });
-  }, [profile?.nome, profile?.whatsapp]);
+    setFotoPerfilPath(profile?.foto_perfil_url ?? null);
+    setFotoPerfilFile(null);
+    setFotoPerfilError(null);
+  }, [profile?.nome, profile?.whatsapp, profile?.foto_perfil_url]);
+
+  useEffect(() => {
+    const run = async () => {
+      if (!fotoPerfilPath) {
+        setFotoPerfilSignedUrl(null);
+        return;
+      }
+      const { data } = await supabase.storage.from("perfil-fotos").createSignedUrl(fotoPerfilPath, 60 * 60);
+      setFotoPerfilSignedUrl(data?.signedUrl ?? null);
+    };
+    void run();
+  }, [fotoPerfilPath]);
 
   const initials = useMemo(() => {
     const source = form.nome || user?.email || "U";
@@ -58,7 +78,34 @@ function PerfilPage() {
         throw new Error("Preencha nome e WhatsApp.");
       }
 
-      await upsertUsuarioProfile({ nome, whatsapp });
+      let nextFotoPerfilPath = fotoPerfilPath;
+      if (fotoPerfilFile) {
+        const {
+          data: { user: authUser },
+          error: authError,
+        } = await supabase.auth.getUser();
+        if (authError || !authUser?.id) {
+          throw new Error("Não foi possível validar sua sessão para upload.");
+        }
+
+        if (!fotoPerfilFile.type.startsWith("image/")) {
+          throw new Error("Envie apenas arquivo de imagem.");
+        }
+        if (fotoPerfilFile.size > 5 * 1024 * 1024) {
+          throw new Error("A foto de perfil deve ter no máximo 5MB.");
+        }
+
+        const extension = fotoPerfilFile.name.split(".").pop()?.toLowerCase() ?? "jpg";
+        const filePath = `${authUser.id}/${Date.now()}-perfil.${extension}`;
+        const { error: uploadError } = await supabase.storage.from("perfil-fotos").upload(filePath, fotoPerfilFile, {
+          upsert: false,
+          contentType: fotoPerfilFile.type,
+        });
+        if (uploadError) throw new Error(`Upload da foto falhou: ${uploadError.message}`);
+        nextFotoPerfilPath = filePath;
+      }
+
+      await upsertUsuarioProfile({ nome, whatsapp, fotoPerfilUrl: nextFotoPerfilPath });
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["usuario"] });
@@ -201,9 +248,13 @@ function PerfilPage() {
           <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm p-6 md:p-7">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div className="flex items-center gap-4">
-                <div className="h-16 w-16 rounded-full bg-emerald-100 text-emerald-700 text-2xl font-bold grid place-items-center">
-                  {initials}
-                </div>
+                {fotoPerfilSignedUrl ? (
+                  <img src={fotoPerfilSignedUrl} alt="Foto de perfil" className="h-16 w-16 rounded-full object-cover border border-zinc-200" />
+                ) : (
+                  <div className="h-16 w-16 rounded-full bg-emerald-100 text-emerald-700 text-2xl font-bold grid place-items-center">
+                    {initials}
+                  </div>
+                )}
                 <div>
                   <h2 className="text-xl font-bold text-zinc-900">{form.nome || "Seu perfil"}</h2>
                   <p className="text-sm text-zinc-600">{user?.email || "Sem e-mail"}</p>
@@ -223,6 +274,9 @@ function PerfilPage() {
                     onClick={() => {
                       setIsEditing(false);
                       setForm({ nome: profile?.nome ?? "", whatsapp: profile?.whatsapp ?? "" });
+                      setFotoPerfilPath(profile?.foto_perfil_url ?? null);
+                      setFotoPerfilFile(null);
+                      setFotoPerfilError(null);
                     }}
                     className="rounded-xl"
                   >
@@ -274,29 +328,36 @@ function PerfilPage() {
                   className="mt-1.5 rounded-[10px] h-11"
                 />
               </div>
-            </div>
-          </section>
-
-          <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm p-6 md:p-7">
-            <div className="flex items-start gap-3">
-              <div className="h-10 w-10 rounded-full bg-blue-100 grid place-items-center text-blue-700 shrink-0">
-                <ShieldCheck className="h-5 w-5" />
-              </div>
-              <div className="flex-1">
-                <h3 className="text-lg font-semibold text-zinc-900">Segurança da conta</h3>
-                <div className="mt-4">
-                  <Label htmlFor="perfil-email-seguranca">E-mail</Label>
-                  <Input
-                    id="perfil-email-seguranca"
-                    value={user?.email ?? ""}
-                    readOnly
-                    disabled
-                    className="mt-1.5 rounded-[10px] h-11"
-                  />
-                </div>
-                <Button type="button" variant="secondary" className="mt-4 rounded-xl">
-                  Alterar senha
-                </Button>
+              <div className="md:col-span-2">
+                <Label htmlFor="perfil-foto">Foto de perfil</Label>
+                <Input
+                  id="perfil-foto"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    setFotoPerfilError(null);
+                    if (!file) {
+                      setFotoPerfilFile(null);
+                      return;
+                    }
+                    if (!file.type.startsWith("image/")) {
+                      setFotoPerfilFile(null);
+                      setFotoPerfilError("Envie apenas arquivo de imagem.");
+                      return;
+                    }
+                    if (file.size > 5 * 1024 * 1024) {
+                      setFotoPerfilFile(null);
+                      setFotoPerfilError("Limite máximo de 5MB.");
+                      return;
+                    }
+                    setFotoPerfilFile(file);
+                  }}
+                  disabled={!isEditing || saveMutation.isPending || isLoading}
+                  className="mt-1.5 rounded-[10px] h-11 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-50 file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-emerald-700"
+                />
+                <p className="mt-1 text-xs text-zinc-500">Formato: imagem • Limite: 5MB</p>
+                {fotoPerfilError && <p className="mt-1 text-xs text-rose-600">{fotoPerfilError}</p>}
               </div>
             </div>
           </section>

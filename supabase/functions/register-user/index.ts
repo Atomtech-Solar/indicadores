@@ -8,8 +8,12 @@ type RegisterPayload = {
 
 type RateLimitResult = {
   allowed: boolean;
-  attemptsLastMinute: number;
+  emailAttemptsLastMinute: number;
+  ipAttemptsLastMinute: number;
 };
+
+const EMAIL_LIMIT_PER_MINUTE = 3;
+const IP_LIMIT_PER_MINUTE = 5;
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -46,30 +50,6 @@ function getClientIP(req: Request): string {
   return "unknown";
 }
 
-async function checkRateLimit(supabase: SupabaseClient, ip: string): Promise<boolean> {
-  const oneMinuteAgoIso = new Date(Date.now() - 60_000).toISOString();
-
-  const { error: insertError } = await supabase.from("rate_limits").insert({
-    ip,
-  });
-
-  if (insertError) {
-    throw new Error("RATE_LIMIT_INSERT_FAILED");
-  }
-
-  const { count, error: countError } = await supabase
-    .from("rate_limits")
-    .select("ip", { count: "exact", head: true })
-    .eq("ip", ip)
-    .gte("created_at", oneMinuteAgoIso);
-
-  if (countError) {
-    throw new Error("RATE_LIMIT_COUNT_FAILED");
-  }
-
-  return (count ?? 0) <= 5;
-}
-
 async function validateCaptcha(token: string): Promise<boolean> {
   if (!token || token.trim().length < 10) {
     return false;
@@ -82,7 +62,8 @@ async function validateCaptcha(token: string): Promise<boolean> {
   return true;
 }
 
-async function applyProgressiveDelay(attemptsLastMinute: number): Promise<void> {
+async function applyProgressiveDelay(input: { emailAttemptsLastMinute: number; ipAttemptsLastMinute: number }): Promise<void> {
+  const attemptsLastMinute = Math.max(input.emailAttemptsLastMinute, input.ipAttemptsLastMinute);
   if (attemptsLastMinute <= 2) return;
 
   // Delay progressivo para reduzir brute-force e spam.
@@ -92,15 +73,19 @@ async function applyProgressiveDelay(attemptsLastMinute: number): Promise<void> 
 
 function logSuspiciousAttempt(input: {
   ip: string;
+  email: string;
   reason: string;
-  attemptsLastMinute: number;
+  emailAttemptsLastMinute: number;
+  ipAttemptsLastMinute: number;
 }): void {
   console.warn(
     JSON.stringify({
       type: "suspicious_register_attempt",
       ip: input.ip,
+      email: input.email,
       reason: input.reason,
-      attemptsLastMinute: input.attemptsLastMinute,
+      emailAttemptsLastMinute: input.emailAttemptsLastMinute,
+      ipAttemptsLastMinute: input.ipAttemptsLastMinute,
       createdAt: new Date().toISOString(),
     }),
   );
@@ -108,34 +93,50 @@ function logSuspiciousAttempt(input: {
 
 async function checkRateLimitWithCount(
   supabase: SupabaseClient,
-  ip: string,
+  input: { email: string; ip: string },
 ): Promise<RateLimitResult> {
   const oneMinuteAgoIso = new Date(Date.now() - 60_000).toISOString();
 
-  const { error: insertError } = await supabase.from("rate_limits").insert({
-    ip,
+  const { error: insertError } = await supabase.from("otp_rate_limits").insert({
+    email: input.email,
+    ip: input.ip,
   });
 
   if (insertError) {
-    throw new Error("RATE_LIMIT_INSERT_FAILED");
+    throw new Error("REGISTER_RATE_LIMIT_INSERT_FAILED");
   }
 
-  const { count, error: countError } = await supabase
-    .from("rate_limits")
-    .select("ip", { count: "exact", head: true })
-    .eq("ip", ip)
-    .gte("created_at", oneMinuteAgoIso);
+  const [{ count: emailCount, error: emailCountError }, { count: ipCount, error: ipCountError }] = await Promise.all([
+    supabase
+      .from("otp_rate_limits")
+      .select("email", { count: "exact", head: true })
+      .eq("email", input.email)
+      .gte("created_at", oneMinuteAgoIso),
+    supabase
+      .from("otp_rate_limits")
+      .select("ip", { count: "exact", head: true })
+      .eq("ip", input.ip)
+      .gte("created_at", oneMinuteAgoIso),
+  ]);
 
-  if (countError) {
-    throw new Error("RATE_LIMIT_COUNT_FAILED");
+  if (emailCountError || ipCountError) {
+    throw new Error("REGISTER_RATE_LIMIT_COUNT_FAILED");
   }
 
-  const attemptsLastMinute = count ?? 0;
+  const emailAttemptsLastMinute = emailCount ?? 0;
+  const ipAttemptsLastMinute = ipCount ?? 0;
 
   return {
-    allowed: attemptsLastMinute <= 5,
-    attemptsLastMinute,
+    allowed:
+      emailAttemptsLastMinute <= EMAIL_LIMIT_PER_MINUTE &&
+      ipAttemptsLastMinute <= IP_LIMIT_PER_MINUTE,
+    emailAttemptsLastMinute,
+    ipAttemptsLastMinute,
   };
+}
+
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
 }
 
 async function createUser(supabase: SupabaseClient, email: string, password: string): Promise<void> {
@@ -171,27 +172,31 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const ip = getClientIP(req);
 
     const payload = (await req.json()) as Partial<RegisterPayload>;
-    const email = payload.email?.trim();
+    const email = normalizeEmail(payload.email ?? "");
     const password = payload.password;
     const captchaToken = payload.captchaToken;
 
-    const rateLimit = await checkRateLimitWithCount(supabase, ip);
-    await applyProgressiveDelay(rateLimit.attemptsLastMinute);
+    const rateLimit = await checkRateLimitWithCount(supabase, { email: email || "invalid", ip });
+    await applyProgressiveDelay(rateLimit);
 
     if (!rateLimit.allowed) {
       logSuspiciousAttempt({
         ip,
+        email: email || "invalid",
         reason: "rate_limit_exceeded",
-        attemptsLastMinute: rateLimit.attemptsLastMinute,
+        emailAttemptsLastMinute: rateLimit.emailAttemptsLastMinute,
+        ipAttemptsLastMinute: rateLimit.ipAttemptsLastMinute,
       });
       return jsonResponse(429, { error: "Não foi possível concluir a solicitação." });
     }
 
-    if (!email || !password || !captchaToken) {
+    if (!email || !email.includes("@") || !password || password.length < 6 || !captchaToken) {
       logSuspiciousAttempt({
         ip,
+        email: email || "invalid",
         reason: "invalid_payload",
-        attemptsLastMinute: rateLimit.attemptsLastMinute,
+        emailAttemptsLastMinute: rateLimit.emailAttemptsLastMinute,
+        ipAttemptsLastMinute: rateLimit.ipAttemptsLastMinute,
       });
       return jsonResponse(400, { error: "Não foi possível concluir a solicitação." });
     }
@@ -200,8 +205,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (!isCaptchaValid) {
       logSuspiciousAttempt({
         ip,
+        email,
         reason: "invalid_captcha",
-        attemptsLastMinute: rateLimit.attemptsLastMinute,
+        emailAttemptsLastMinute: rateLimit.emailAttemptsLastMinute,
+        ipAttemptsLastMinute: rateLimit.ipAttemptsLastMinute,
       });
       return jsonResponse(400, { error: "Não foi possível concluir a solicitação." });
     }
@@ -209,7 +216,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     await createUser(supabase, email, password);
 
     return jsonResponse(200, { message: "Cadastro realizado com sucesso." });
-  } catch {
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        type: "register_user_error",
+        message: error instanceof Error ? error.message : String(error),
+        createdAt: new Date().toISOString(),
+      }),
+    );
     return jsonResponse(500, { error: "Não foi possível concluir a solicitação." });
   }
 });

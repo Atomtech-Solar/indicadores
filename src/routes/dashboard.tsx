@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   LayoutDashboard,
@@ -20,12 +20,12 @@ import {
   Hourglass,
   PiggyBank,
   BadgeCheck,
-  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { supabase } from "@/lib/supabase/client";
 import {
   dbStatusToUi,
@@ -124,9 +124,23 @@ function Dashboard() {
   const [funnelFilter, setFunnelFilter] = useState<"today" | "week" | "month" | "custom">("month");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
+  const [indicacoesSearch, setIndicacoesSearch] = useState("");
   const [expandedRecentIndicacaoId, setExpandedRecentIndicacaoId] = useState<number | null>(null);
   const [expandedMyIndicacaoId, setExpandedMyIndicacaoId] = useState<number | null>(null);
   const [expandedComissaoId, setExpandedComissaoId] = useState<number | null>(null);
+  const [comissoesPage, setComissoesPage] = useState(1);
+  const [editingIndicacaoId, setEditingIndicacaoId] = useState<number | null>(null);
+  const [editNome, setEditNome] = useState("");
+  const [editWhatsapp, setEditWhatsapp] = useState("");
+  const [loadingEditIndicacao, setLoadingEditIndicacao] = useState(false);
+  const [editContaEnergiaPath, setEditContaEnergiaPath] = useState<string | null>(null);
+  const [editFotoPadraoPath, setEditFotoPadraoPath] = useState<string | null>(null);
+  const [editContaEnergiaFile, setEditContaEnergiaFile] = useState<File | null>(null);
+  const [editFotoPadraoFile, setEditFotoPadraoFile] = useState<File | null>(null);
+  const [editContaEnergiaError, setEditContaEnergiaError] = useState<string | null>(null);
+  const [editFotoPadraoError, setEditFotoPadraoError] = useState<string | null>(null);
+  const [editContaEnergiaSignedUrl, setEditContaEnergiaSignedUrl] = useState<string | null>(null);
+  const [editFotoPadraoSignedUrl, setEditFotoPadraoSignedUrl] = useState<string | null>(null);
 
   const { data: profile } = useQuery({
     queryKey: ["usuario"],
@@ -137,11 +151,14 @@ function Dashboard() {
     queryKey: ["indicacoes"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("vw_indicacoes_dashboard")
-        .select("id, nome_indicado, tipo, status, valor_potencial, created_at")
+        .from("indicacoes")
+        .select("id, nome_indicado, whatsapp, tipo, status, valor_potencial, created_at")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data ?? []) as Pick<Tables<"indicacoes">, "id" | "nome_indicado" | "tipo" | "status" | "valor_potencial" | "created_at">[];
+      return (data ?? []) as Pick<
+        Tables<"indicacoes">,
+        "id" | "nome_indicado" | "whatsapp" | "tipo" | "status" | "valor_potencial" | "created_at"
+      >[];
     },
   });
 
@@ -289,9 +306,31 @@ function Dashboard() {
     return out;
   }, [indicacoes]);
 
+  const indicacaoWhatsappById = useMemo(() => {
+    const out = new Map<number, string>();
+    for (const i of indicacoes) out.set(Number(i.id), i.whatsapp);
+    return out;
+  }, [indicacoes]);
+
+  const filteredIndicacoesTabRows = useMemo(() => {
+    const term = indicacoesSearch.trim().toLowerCase();
+    if (!term) return indicacoesTabRows;
+
+    return indicacoesTabRows.filter((i) => {
+      const whatsapp = indicacaoWhatsappById.get(Number(i.id)) ?? "";
+      const tipo = mapTipoDbToUi(i.tipo).toLowerCase();
+      const status = dbStatusToUi(i.status).toLowerCase();
+      const valor = formatPotentialValue(i.valor_potencial).toLowerCase();
+      const data = formatDate(i.created_at).toLowerCase();
+      const nome = i.nome_indicado.toLowerCase();
+
+      return [nome, whatsapp.toLowerCase(), tipo, status, valor, data].some((value) => value.includes(term));
+    });
+  }, [indicacoesSearch, indicacoesTabRows, indicacaoWhatsappById]);
+
   const { data: comissoesSummaryRpc } = useQuery({
     queryKey: ["comissoes-summary"],
-    enabled: activeTab === "comissoes",
+    enabled: activeTab === "comissoes" || activeTab === "visao-geral",
     queryFn: async () => {
       const { data, error } = await supabase.rpc("get_comissoes_summary", { p_usuario_id: null });
       if (error) throw error;
@@ -324,6 +363,162 @@ function Dashboard() {
     },
   });
 
+  const comissoesTotalPages = Math.max(1, Math.ceil(comissoesFiltradasRpc.length / 5));
+  const comissoesPageSafe = Math.min(comissoesPage, comissoesTotalPages);
+  const comissoesPaginadas = useMemo(() => {
+    const start = (comissoesPageSafe - 1) * 5;
+    return comissoesFiltradasRpc.slice(start, start + 5);
+  }, [comissoesFiltradasRpc, comissoesPageSafe]);
+
+  useEffect(() => {
+    setComissoesPage(1);
+  }, [comissoesPeriodFilter, comissoesStatusFilter]);
+
+  useEffect(() => {
+    if (comissoesPage > comissoesTotalPages) {
+      setComissoesPage(comissoesTotalPages);
+    }
+  }, [comissoesPage, comissoesTotalPages]);
+
+  const updateIndicacaoMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingIndicacaoId) throw new Error("Indicação inválida.");
+      const nome = editNome.trim();
+      const whatsapp = editWhatsapp.trim();
+      if (!nome || !whatsapp) throw new Error("Preencha nome e WhatsApp.");
+
+      const {
+        data: { user: authUser },
+        error: authError,
+      } = await supabase.auth.getUser();
+      if (authError || !authUser?.id) {
+        throw new Error("Não foi possível validar sua sessão para upload.");
+      }
+
+      let contaEnergiaPath = editContaEnergiaPath;
+      if (editContaEnergiaFile) {
+        if (!editContaEnergiaFile.type.startsWith("image/")) {
+          throw new Error("Envie apenas imagens no campo da conta de energia.");
+        }
+        if (editContaEnergiaFile.size > 5 * 1024 * 1024) {
+          throw new Error("A imagem da conta de energia deve ter no máximo 5MB.");
+        }
+
+        const extension = editContaEnergiaFile.name.split(".").pop()?.toLowerCase() ?? "jpg";
+        const filePath = `${authUser.id}/${Date.now()}-${makeUploadId()}.${extension}`;
+        const { error: uploadError } = await supabase.storage
+          .from("indicacoes-comprovantes")
+          .upload(filePath, editContaEnergiaFile, {
+            upsert: false,
+            contentType: editContaEnergiaFile.type,
+          });
+        if (uploadError) {
+          throw new Error(`Upload da conta de energia falhou: ${uploadError.message}`);
+        }
+        contaEnergiaPath = filePath;
+      }
+
+      let fotoPadraoPath = editFotoPadraoPath;
+      if (editFotoPadraoFile) {
+        if (!editFotoPadraoFile.type.startsWith("image/")) {
+          throw new Error("Envie apenas imagens no campo da foto do padrão.");
+        }
+        if (editFotoPadraoFile.size > 5 * 1024 * 1024) {
+          throw new Error("A foto do padrão deve ter no máximo 5MB.");
+        }
+
+        const extension = editFotoPadraoFile.name.split(".").pop()?.toLowerCase() ?? "jpg";
+        const filePath = `${authUser.id}/${Date.now()}-${makeUploadId()}.${extension}`;
+        const { error: uploadError } = await supabase.storage
+          .from("indicacoes-comprovantes")
+          .upload(filePath, editFotoPadraoFile, {
+            upsert: false,
+            contentType: editFotoPadraoFile.type,
+          });
+        if (uploadError) {
+          throw new Error(`Upload da foto do padrão falhou: ${uploadError.message}`);
+        }
+        fotoPadraoPath = filePath;
+      }
+
+      const { error } = await supabase
+        .from("indicacoes")
+        .update({
+          nome_indicado: nome,
+          whatsapp,
+          conta_energia_url: contaEnergiaPath,
+          foto_padrao_url: fotoPadraoPath,
+        })
+        .eq("id", editingIndicacaoId);
+
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["indicacoes"] }),
+        queryClient.invalidateQueries({ queryKey: ["indicacoes-by-period"] }),
+      ]);
+      toast.success("Indicação atualizada.");
+      closeEditIndicacaoModal();
+    },
+    onError: () => {
+      toast.error("Não foi possível atualizar a indicação.");
+    },
+  });
+
+  const closeEditIndicacaoModal = () => {
+    setEditingIndicacaoId(null);
+    setEditNome("");
+    setEditWhatsapp("");
+    setEditContaEnergiaPath(null);
+    setEditFotoPadraoPath(null);
+    setEditContaEnergiaFile(null);
+    setEditFotoPadraoFile(null);
+    setEditContaEnergiaError(null);
+    setEditFotoPadraoError(null);
+    setEditContaEnergiaSignedUrl(null);
+    setEditFotoPadraoSignedUrl(null);
+  };
+
+  const openEditIndicacao = async (id: number, fallbackNome: string) => {
+    try {
+      setLoadingEditIndicacao(true);
+      const { data, error } = await supabase
+        .from("indicacoes")
+        .select("nome_indicado, whatsapp, conta_energia_url, foto_padrao_url")
+        .eq("id", id)
+        .single();
+
+      if (error) throw error;
+
+      setEditingIndicacaoId(id);
+      setEditNome(data?.nome_indicado ?? fallbackNome);
+      setEditWhatsapp(data?.whatsapp ?? "");
+      setEditContaEnergiaPath(data?.conta_energia_url ?? null);
+      setEditFotoPadraoPath(data?.foto_padrao_url ?? null);
+      setEditContaEnergiaFile(null);
+      setEditFotoPadraoFile(null);
+      setEditContaEnergiaError(null);
+      setEditFotoPadraoError(null);
+
+      const [contaSigned, padraoSigned] = await Promise.all([
+        data?.conta_energia_url
+          ? supabase.storage.from("indicacoes-comprovantes").createSignedUrl(data.conta_energia_url, 60 * 60)
+          : Promise.resolve({ data: null, error: null }),
+        data?.foto_padrao_url
+          ? supabase.storage.from("indicacoes-comprovantes").createSignedUrl(data.foto_padrao_url, 60 * 60)
+          : Promise.resolve({ data: null, error: null }),
+      ]);
+
+      setEditContaEnergiaSignedUrl(contaSigned.data?.signedUrl ?? null);
+      setEditFotoPadraoSignedUrl(padraoSigned.data?.signedUrl ?? null);
+    } catch {
+      toast.error("Não foi possível abrir edição dessa indicação.");
+    } finally {
+      setLoadingEditIndicacao(false);
+    }
+  };
+
   const handleSignOut = async () => {
     try {
       const { error } = await supabase.auth.signOut();
@@ -342,7 +537,7 @@ function Dashboard() {
         <div className="px-6 py-5 border-b border-[#04653f]">
           <Link to="/" className="flex items-center justify-center">
             <img
-              src="/img/Ativo 3.png"
+              src="https://i.ibb.co/pv36YBgf/Ativo-3.png"
               alt="ATOM TECH"
               className="h-16 w-auto object-contain"
             />
@@ -403,7 +598,11 @@ function Dashboard() {
           }`}
         >
           <div className="h-16 px-4 border-b border-[#04653f] flex items-center justify-between">
-            <img src="/img/Ativo 3.png" alt="ATOM TECH" className="h-10 w-auto object-contain" />
+            <img
+              src="https://i.ibb.co/pv36YBgf/Ativo-3.png"
+              alt="ATOM TECH"
+              className="h-10 w-auto object-contain"
+            />
             <button
               type="button"
               className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/25 text-white"
@@ -560,8 +759,8 @@ function Dashboard() {
               }
             />
             <StatCard
-              label="Disponível para saque"
-              value={formatBRL(stats.disponivel)}
+              label="Total acumulado"
+              value={formatBRL(comissoesSummaryRpc?.total_acumulado ?? stats.disponivel)}
               icon={PiggyBank}
               iconWrapClassName="bg-emerald-100 text-emerald-700"
               valueClassName="text-emerald-600"
@@ -615,9 +814,11 @@ function Dashboard() {
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground border-b border-border">
                     <th className="font-medium pb-3">Nome</th>
+                      <th className="font-medium pb-3">WhatsApp</th>
                     <th className="font-medium pb-3">Status</th>
                     <th className="font-medium pb-3">Valor potencial</th>
                     <th className="font-medium pb-3">Data</th>
+                      <th className="font-medium pb-3 text-right">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -634,11 +835,21 @@ function Dashboard() {
                           </div>
                         </div>
                       </td>
+                      <td className="py-3.5 text-muted-foreground">{i.whatsapp || "-"}</td>
                       <td className="py-3.5">
                         <StatusBadge status={dbStatusToUi(i.status)} />
                       </td>
                       <td className="py-3.5 font-semibold text-primary">{formatPotentialValue(i.valor_potencial)}</td>
                       <td className="py-3.5 text-muted-foreground">{formatDate(i.created_at)}</td>
+                      <td className="py-3.5 text-right">
+                        <button
+                          type="button"
+                          onClick={() => void openEditIndicacao(i.id, i.nome_indicado)}
+                          className="inline-flex items-center rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 transition"
+                        >
+                          Editar
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -851,27 +1062,47 @@ function Dashboard() {
               </div>
 
               <Section title="Minhas indicações" subtitle="Lista completa das suas indicações">
+              <div className="mb-4">
+                <Input
+                  value={indicacoesSearch}
+                  onChange={(e) => setIndicacoesSearch(e.target.value)}
+                  placeholder="Buscar por nome, WhatsApp, tipo, status, valor potencial ou data"
+                  className="h-10 rounded-lg"
+                />
+              </div>
               <div className="max-[500px]:hidden overflow-x-auto -mx-6 lg:-mx-7 px-6 lg:px-7">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs text-muted-foreground border-b border-border">
                       <th className="font-medium pb-3">Nome</th>
+                      <th className="font-medium pb-3">WhatsApp</th>
                       <th className="font-medium pb-3">Tipo</th>
                       <th className="font-medium pb-3">Status</th>
                       <th className="font-medium pb-3">Valor potencial</th>
                       <th className="font-medium pb-3">Data</th>
+                      <th className="font-medium pb-3 text-right">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {indicacoesTabRows.map((i) => (
+                    {filteredIndicacoesTabRows.map((i) => (
                       <tr key={i.id}>
                         <td className="py-3.5 font-medium">{i.nome_indicado}</td>
+                        <td className="py-3.5 text-muted-foreground">{indicacaoWhatsappById.get(Number(i.id)) || "-"}</td>
                         <td className="py-3.5 text-muted-foreground">{mapTipoDbToUi(i.tipo)}</td>
                         <td className="py-3.5">
                           <StatusBadge status={dbStatusToUi(i.status)} />
                         </td>
                         <td className="py-3.5 font-semibold text-primary">{formatPotentialValue(i.valor_potencial)}</td>
                         <td className="py-3.5 text-muted-foreground">{formatDate(i.created_at)}</td>
+                        <td className="py-3.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => void openEditIndicacao(i.id, i.nome_indicado)}
+                            className="inline-flex items-center rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50 transition"
+                          >
+                            Editar
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -879,7 +1110,7 @@ function Dashboard() {
               </div>
 
               <div className="hidden max-[500px]:grid gap-3">
-                {indicacoesTabRows.map((i) => {
+                {filteredIndicacoesTabRows.map((i) => {
                   const isExpanded = expandedMyIndicacaoId === i.id;
                   return (
                     <div key={i.id} className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
@@ -915,7 +1146,7 @@ function Dashboard() {
                     </div>
                   );
                 })}
-                {!loadingInd && indicacoesTabRows.length === 0 && (
+                {!loadingInd && filteredIndicacoesTabRows.length === 0 && (
                   <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
                     Você ainda não tem indicações nessa visualização.
                   </div>
@@ -972,7 +1203,10 @@ function Dashboard() {
                   <div className="flex items-center gap-2">
                     <select
                       value={comissoesPeriodFilter}
-                      onChange={(e) => setComissoesPeriodFilter(e.target.value as "7d" | "30d" | "90d")}
+                      onChange={(e) => {
+                        setComissoesPeriodFilter(e.target.value as "7d" | "30d" | "90d");
+                        setComissoesPage(1);
+                      }}
                       className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-700"
                     >
                       <option value="7d">Últimos 7 dias</option>
@@ -982,9 +1216,10 @@ function Dashboard() {
 
                     <select
                       value={comissoesStatusFilter}
-                      onChange={(e) =>
-                        setComissoesStatusFilter(e.target.value as "all" | "pago" | "pendente")
-                      }
+                      onChange={(e) => {
+                        setComissoesStatusFilter(e.target.value as "all" | "pago" | "pendente");
+                        setComissoesPage(1);
+                      }}
                       className="h-9 rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-700"
                     >
                       <option value="all">Tudo</option>
@@ -1002,11 +1237,10 @@ function Dashboard() {
                         <th className="font-semibold py-3 px-4 md:px-5">Data</th>
                         <th className="font-semibold py-3 px-4 md:px-5">Valor ganho</th>
                         <th className="font-semibold py-3 px-4 md:px-5">Status</th>
-                        <th className="font-semibold py-3 px-4 md:px-5 text-right">Ações</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-100">
-                      {comissoesFiltradasRpc.map((c) => (
+                      {comissoesPaginadas.map((c) => (
                         <tr key={c.id}>
                           <td className="py-3 px-4 md:px-5 text-zinc-800">
                             {c.nome_indicado || `Comissão #${c.id}`}
@@ -1040,23 +1274,12 @@ function Dashboard() {
                               {c.status === "pago" ? "Pago" : c.status === "pendente" ? "Pendente" : "Disponível"}
                             </span>
                           </td>
-                          <td className="py-3 px-4 md:px-5">
-                            <div className="flex items-center justify-end gap-1">
-                              <button
-                                type="button"
-                                className="h-8 w-8 rounded-md border border-zinc-200 text-zinc-500 hover:bg-zinc-50 hover:text-zinc-700 transition grid place-items-center"
-                                title="Excluir registro"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </td>
                         </tr>
                       ))}
 
-                      {comissoesFiltradasRpc.length === 0 && (
+                      {comissoesPaginadas.length === 0 && (
                         <tr>
-                          <td colSpan={5} className="py-8 px-4 text-center text-sm text-muted-foreground">
+                          <td colSpan={4} className="py-8 px-4 text-center text-sm text-muted-foreground">
                             Nenhum ganho encontrado para os filtros selecionados.
                           </td>
                         </tr>
@@ -1066,7 +1289,7 @@ function Dashboard() {
                 </div>
 
                 <div className="hidden max-[550px]:grid gap-3 p-4">
-                  {comissoesFiltradasRpc.map((c) => {
+                  {comissoesPaginadas.map((c) => {
                     const isExpanded = expandedComissaoId === c.id;
                     const statusLabel = c.status === "pago" ? "Pago" : c.status === "pendente" ? "Pendente" : "Disponível";
                     return (
@@ -1123,12 +1346,38 @@ function Dashboard() {
                       </div>
                     );
                   })}
-                  {comissoesFiltradasRpc.length === 0 && (
+                  {comissoesPaginadas.length === 0 && (
                     <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600 text-center">
                       Nenhum ganho encontrado para os filtros selecionados.
                     </div>
                   )}
                 </div>
+
+                {comissoesFiltradasRpc.length > 0 && (
+                  <div className="flex items-center justify-between border-t border-zinc-200 px-4 md:px-5 py-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 px-3 text-xs"
+                      onClick={() => setComissoesPage((p) => Math.max(1, p - 1))}
+                      disabled={comissoesPageSafe === 1}
+                    >
+                      Anterior
+                    </Button>
+                    <p className="text-sm font-medium text-zinc-700">
+                      {comissoesPageSafe}/{comissoesTotalPages}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 px-3 text-xs"
+                      onClick={() => setComissoesPage((p) => Math.min(comissoesTotalPages, p + 1))}
+                      disabled={comissoesPageSafe === comissoesTotalPages}
+                    >
+                      Próxima
+                    </Button>
+                  </div>
+                )}
               </div>
 
               <div className="rounded-2xl border border-zinc-200 bg-white shadow-sm p-4 md:p-5 flex items-start gap-3">
@@ -1210,6 +1459,75 @@ function Dashboard() {
             navigate({ to: "/indicacao-confirmacao", search: { indicacaoId: id } });
           }}
           queryClient={queryClient}
+        />
+      )}
+
+      {editingIndicacaoId != null && (
+        <EditIndicacaoModal
+          loading={loadingEditIndicacao}
+          nome={editNome}
+          whatsapp={editWhatsapp}
+          contaEnergiaPath={editContaEnergiaPath}
+          fotoPadraoPath={editFotoPadraoPath}
+          contaEnergiaSignedUrl={editContaEnergiaSignedUrl}
+          fotoPadraoSignedUrl={editFotoPadraoSignedUrl}
+          contaEnergiaFile={editContaEnergiaFile}
+          fotoPadraoFile={editFotoPadraoFile}
+          contaEnergiaError={editContaEnergiaError}
+          fotoPadraoError={editFotoPadraoError}
+          saving={updateIndicacaoMutation.isPending}
+          onClose={closeEditIndicacaoModal}
+          onNomeChange={setEditNome}
+          onWhatsappChange={(value) => setEditWhatsapp(maskWhatsapp(value))}
+          onContaEnergiaSelect={(file) => {
+            setEditContaEnergiaError(null);
+            if (!file) {
+              setEditContaEnergiaFile(null);
+              return;
+            }
+            if (!file.type.startsWith("image/")) {
+              setEditContaEnergiaFile(null);
+              setEditContaEnergiaError("Envie apenas arquivo de imagem.");
+              return;
+            }
+            if (file.size > 5 * 1024 * 1024) {
+              setEditContaEnergiaFile(null);
+              setEditContaEnergiaError("Limite máximo de 5MB.");
+              return;
+            }
+            setEditContaEnergiaFile(file);
+          }}
+          onRemoveContaEnergia={() => {
+            setEditContaEnergiaFile(null);
+            setEditContaEnergiaPath(null);
+            setEditContaEnergiaSignedUrl(null);
+            setEditContaEnergiaError(null);
+          }}
+          onFotoPadraoSelect={(file) => {
+            setEditFotoPadraoError(null);
+            if (!file) {
+              setEditFotoPadraoFile(null);
+              return;
+            }
+            if (!file.type.startsWith("image/")) {
+              setEditFotoPadraoFile(null);
+              setEditFotoPadraoError("Envie apenas arquivo de imagem.");
+              return;
+            }
+            if (file.size > 5 * 1024 * 1024) {
+              setEditFotoPadraoFile(null);
+              setEditFotoPadraoError("Limite máximo de 5MB.");
+              return;
+            }
+            setEditFotoPadraoFile(file);
+          }}
+          onRemoveFotoPadrao={() => {
+            setEditFotoPadraoFile(null);
+            setEditFotoPadraoPath(null);
+            setEditFotoPadraoSignedUrl(null);
+            setEditFotoPadraoError(null);
+          }}
+          onSave={() => updateIndicacaoMutation.mutate()}
         />
       )}
     </div>
@@ -1363,7 +1681,13 @@ function NovaIndicacaoModal({
   onSent: (id: number) => void;
   queryClient: ReturnType<typeof useQueryClient>;
 }) {
-  const [form, setForm] = useState({ nome: "", whatsapp: "", tipo: "Pessoa" as IndicacaoTipo });
+  const [form, setForm] = useState({
+    nome: "",
+    whatsapp: "",
+    tipo: "Pessoa" as IndicacaoTipo,
+    tipoProjeto: "",
+    observacoes: "",
+  });
   const [contaEnergiaFile, setContaEnergiaFile] = useState<File | null>(null);
   const [contaEnergiaError, setContaEnergiaError] = useState<string | null>(null);
   const [fotoPadraoFile, setFotoPadraoFile] = useState<File | null>(null);
@@ -1438,6 +1762,8 @@ function NovaIndicacaoModal({
           nome_indicado: form.nome.trim(),
           whatsapp: form.whatsapp.trim(),
           tipo: mapTipoToDb(form.tipo),
+          tipo_projeto: form.tipoProjeto || null,
+          observacoes: form.observacoes.trim() || null,
           conta_energia_url: contaEnergiaPath,
           foto_padrao_url: fotoPadraoPath,
         })
@@ -1462,8 +1788,8 @@ function NovaIndicacaoModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/40 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="w-full max-w-md bg-card rounded-2xl shadow-card-hover border border-border p-6">
+    <div className="fixed inset-0 z-50 grid items-start sm:items-center place-items-center overflow-y-auto bg-foreground/40 backdrop-blur-sm p-4 animate-in fade-in">
+      <div className="w-full max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto bg-card rounded-2xl shadow-card-hover border border-border p-6">
         <div className="flex items-start justify-between mb-5">
           <div>
             <h3 className="text-xl font-bold">Nova indicação</h3>
@@ -1590,6 +1916,33 @@ function NovaIndicacaoModal({
             <p className="mt-1 text-xs text-zinc-500">Formato: qualquer imagem • Limite: 5MB</p>
             {fotoPadraoError && <p className="mt-1 text-xs text-rose-600">{fotoPadraoError}</p>}
           </div>
+          <div>
+            <Label htmlFor="m-tipo-projeto" className="text-sm font-medium">
+              Solução de interesse
+            </Label>
+            <select
+              id="m-tipo-projeto"
+              value={form.tipoProjeto}
+              onChange={(e) => setForm({ ...form, tipoProjeto: e.target.value })}
+              className="mt-1.5 h-11 w-full rounded-[10px] border border-input bg-background px-3 text-sm"
+            >
+              <option value="">Selecione uma opção</option>
+              <option value="usina_solar">Usina solar</option>
+              <option value="carregador_veicular">Carregador veicular</option>
+            </select>
+          </div>
+          <div>
+            <Label htmlFor="m-observacoes" className="text-sm font-medium">
+              Observações
+            </Label>
+            <Textarea
+              id="m-observacoes"
+              value={form.observacoes}
+              onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
+              placeholder="Descreva detalhes úteis do cliente (consumo, urgência, orçamento, perfil do imóvel ou negócio). Quanto mais contexto, maior a chance de fechamento."
+              className="mt-1.5 min-h-[92px] rounded-[10px]"
+            />
+          </div>
           <Button
             type="submit"
             disabled={mutation.isPending}
@@ -1600,6 +1953,195 @@ function NovaIndicacaoModal({
           </Button>
         </form>
       </div>
+    </div>
+  );
+}
+
+function EditIndicacaoModal({
+  loading,
+  nome,
+  whatsapp,
+  contaEnergiaPath,
+  fotoPadraoPath,
+  contaEnergiaSignedUrl,
+  fotoPadraoSignedUrl,
+  contaEnergiaFile,
+  fotoPadraoFile,
+  contaEnergiaError,
+  fotoPadraoError,
+  saving,
+  onClose,
+  onNomeChange,
+  onWhatsappChange,
+  onContaEnergiaSelect,
+  onRemoveContaEnergia,
+  onFotoPadraoSelect,
+  onRemoveFotoPadrao,
+  onSave,
+}: {
+  loading: boolean;
+  nome: string;
+  whatsapp: string;
+  contaEnergiaPath: string | null;
+  fotoPadraoPath: string | null;
+  contaEnergiaSignedUrl: string | null;
+  fotoPadraoSignedUrl: string | null;
+  contaEnergiaFile: File | null;
+  fotoPadraoFile: File | null;
+  contaEnergiaError: string | null;
+  fotoPadraoError: string | null;
+  saving: boolean;
+  onClose: () => void;
+  onNomeChange: (value: string) => void;
+  onWhatsappChange: (value: string) => void;
+  onContaEnergiaSelect: (file: File | null) => void;
+  onRemoveContaEnergia: () => void;
+  onFotoPadraoSelect: (file: File | null) => void;
+  onRemoveFotoPadrao: () => void;
+  onSave: () => void;
+}) {
+  const [zoomedImageUrl, setZoomedImageUrl] = useState<string | null>(null);
+  const [contaPreviewUrl, setContaPreviewUrl] = useState<string | null>(null);
+  const [padraoPreviewUrl, setPadraoPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!contaEnergiaFile) {
+      setContaPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(contaEnergiaFile);
+    setContaPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [contaEnergiaFile]);
+
+  useEffect(() => {
+    if (!fotoPadraoFile) {
+      setPadraoPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(fotoPadraoFile);
+    setPadraoPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [fotoPadraoFile]);
+
+  const contaImageToShow = contaPreviewUrl ?? contaEnergiaSignedUrl;
+  const padraoImageToShow = padraoPreviewUrl ?? fotoPadraoSignedUrl;
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
+      <div className="w-full max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-5 shadow-lg">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-zinc-900">Editar indicação</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+            aria-label="Fechar edição"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <Label htmlFor="edit-indicacao-nome">Nome</Label>
+            <Input
+              id="edit-indicacao-nome"
+              value={nome}
+              onChange={(e) => onNomeChange(e.target.value)}
+              disabled={loading || saving}
+              className="mt-1.5"
+            />
+          </div>
+          <div>
+            <Label htmlFor="edit-indicacao-whatsapp">WhatsApp</Label>
+            <Input
+              id="edit-indicacao-whatsapp"
+              value={whatsapp}
+              onChange={(e) => onWhatsappChange(e.target.value)}
+              disabled={loading || saving}
+              className="mt-1.5"
+            />
+          </div>
+          <div>
+            <Label htmlFor="edit-indicacao-conta-energia">Foto da conta de energia</Label>
+            <Input
+              id="edit-indicacao-conta-energia"
+              type="file"
+              accept="image/*"
+              onChange={(e) => onContaEnergiaSelect(e.target.files?.[0] ?? null)}
+              disabled={loading || saving}
+              className="mt-1.5 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-50 file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-emerald-700"
+            />
+            <p className="mt-1 text-xs text-zinc-500">
+              {contaEnergiaPath ? "Foto atual cadastrada. Selecione outra para substituir." : "Nenhuma foto cadastrada ainda."}
+            </p>
+            {contaImageToShow && (
+              <div className="mt-2 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setZoomedImageUrl(contaImageToShow)}
+                  className="block w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50"
+                >
+                  <img src={contaImageToShow} alt="Pré-visualização da conta de energia" className="h-40 w-full object-cover" />
+                </button>
+                <Button type="button" variant="outline" className="h-9" onClick={onRemoveContaEnergia} disabled={loading || saving}>
+                  Excluir imagem
+                </Button>
+              </div>
+            )}
+            {contaEnergiaError && <p className="mt-1 text-xs text-rose-600">{contaEnergiaError}</p>}
+          </div>
+          <div>
+            <Label htmlFor="edit-indicacao-foto-padrao">Foto do padrão</Label>
+            <Input
+              id="edit-indicacao-foto-padrao"
+              type="file"
+              accept="image/*"
+              onChange={(e) => onFotoPadraoSelect(e.target.files?.[0] ?? null)}
+              disabled={loading || saving}
+              className="mt-1.5 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-50 file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-emerald-700"
+            />
+            <p className="mt-1 text-xs text-zinc-500">
+              {fotoPadraoPath ? "Foto atual cadastrada. Selecione outra para substituir." : "Nenhuma foto cadastrada ainda."}
+            </p>
+            {padraoImageToShow && (
+              <div className="mt-2 space-y-2">
+                <button
+                  type="button"
+                  onClick={() => setZoomedImageUrl(padraoImageToShow)}
+                  className="block w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50"
+                >
+                  <img src={padraoImageToShow} alt="Pré-visualização da foto do padrão" className="h-40 w-full object-cover" />
+                </button>
+                <Button type="button" variant="outline" className="h-9" onClick={onRemoveFotoPadrao} disabled={loading || saving}>
+                  Excluir imagem
+                </Button>
+              </div>
+            )}
+            {fotoPadraoError && <p className="mt-1 text-xs text-rose-600">{fotoPadraoError}</p>}
+          </div>
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button type="button" onClick={onSave} disabled={loading || saving}>
+            Salvar
+          </Button>
+        </div>
+      </div>
+      {zoomedImageUrl && (
+        <button
+          type="button"
+          onClick={() => setZoomedImageUrl(null)}
+          className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4"
+          aria-label="Fechar imagem ampliada"
+        >
+          <img src={zoomedImageUrl} alt="Imagem ampliada" className="max-h-[90vh] max-w-[90vw] rounded-xl object-contain" />
+        </button>
+      )}
     </div>
   );
 }

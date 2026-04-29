@@ -220,7 +220,7 @@ async function listFotos(adminClient: SupabaseClient) {
   const [{ data: indicacoes }, { data: usuarios }] = await Promise.all([
     adminClient
       .from("indicacoes")
-      .select("id, usuario_id, nome_indicado, conta_energia_url, foto_padrao_url, created_at")
+      .select("id, usuario_id, nome_indicado, tipo_projeto, observacoes, conta_energia_url, foto_padrao_url, created_at")
       .or("conta_energia_url.not.is.null,foto_padrao_url.not.is.null")
       .order("created_at", { ascending: false }),
     adminClient.from("usuarios").select("id, nome"),
@@ -241,6 +241,8 @@ async function listFotos(adminClient: SupabaseClient) {
         id: i.id,
         usuario_nome: userNameById.get(i.usuario_id) ?? "Usuário",
         nome_indicado: i.nome_indicado,
+        tipo_projeto: i.tipo_projeto,
+        observacoes: i.observacoes,
         conta_energia_url: contaEnergiaUrl,
         foto_padrao_url: fotoPadraoUrl,
         created_at: i.created_at,

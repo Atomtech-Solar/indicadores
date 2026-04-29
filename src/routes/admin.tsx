@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   LayoutDashboard,
@@ -15,6 +15,7 @@ import {
   CalendarDays,
   PiggyBank,
   ImageIcon,
+  MoreVertical,
 } from "lucide-react";
 import { toast } from "sonner";
 import { RequireAdmin } from "@/components/auth/RequireAdmin";
@@ -39,6 +40,25 @@ function AdminRouteComponent() {
   const [commissionModal, setCommissionModal] = useState<{ indicacaoId: number; nomeIndicado: string } | null>(null);
   const [commissionValue, setCommissionValue] = useState("");
   const [projetoValue, setProjetoValue] = useState("");
+  const [fotosSearch, setFotosSearch] = useState("");
+  const [comissoesDefinicaoSearch, setComissoesDefinicaoSearch] = useState("");
+  const [comissoesDefinicaoPage, setComissoesDefinicaoPage] = useState(1);
+  const [comissoesHistoricoSearch, setComissoesHistoricoSearch] = useState("");
+  const [comissoesHistoricoPage, setComissoesHistoricoPage] = useState(1);
+  const [usuariosSearch, setUsuariosSearch] = useState("");
+  const [actionUserModal, setActionUserModal] = useState<{
+    usuario_id: string;
+    nome: string;
+    role: "indicador" | "admin";
+    is_disabled: boolean;
+  } | null>(null);
+  const [indicacoesSearch, setIndicacoesSearch] = useState("");
+  const [actionIndicacaoModal, setActionIndicacaoModal] = useState<{
+    id: number;
+    nome_indicado: string;
+    status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido";
+  } | null>(null);
+  const [zoomedFotoUrl, setZoomedFotoUrl] = useState<string | null>(null);
 
   const { data: overview, isLoading: loadingOverview } = useQuery({
     queryKey: ["admin-overview"],
@@ -95,6 +115,8 @@ function AdminRouteComponent() {
           id: number;
           usuario_nome: string;
           nome_indicado: string;
+          tipo_projeto: string | null;
+          observacoes: string | null;
           conta_energia_url: string | null;
           foto_padrao_url: string | null;
           created_at: string;
@@ -160,6 +182,16 @@ function AdminRouteComponent() {
       toast.success("Usuário promovido para admin.");
     },
     onError: () => toast.error("Não foi possível promover o usuário."),
+  });
+
+  const revokeAdminMutation = useMutation({
+    mutationFn: (userId: string) => callAdminOpsMutation({ action: "set_user_role", userId, role: "indicador" }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
+      toast.success("Privilégio de admin revogado.");
+    },
+    onError: () => toast.error("Não foi possível revogar admin."),
   });
 
   const disableMutation = useMutation({
@@ -255,13 +287,142 @@ function AdminRouteComponent() {
     [],
   );
 
+  const filteredUsuarios = useMemo(() => {
+    const term = usuariosSearch.trim().toLowerCase();
+    return usuarios.filter((u) => {
+      if (!term) return true;
+
+      const searchable = [
+        u.nome,
+        u.email,
+        u.whatsapp,
+        u.role,
+        formatDate(u.created_at),
+        u.is_disabled ? "desativado" : "ativo",
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return searchable.includes(term);
+    });
+  }, [usuarios, usuariosSearch]);
+
+  const filteredIndicacoes = useMemo(() => {
+    const term = indicacoesSearch.trim().toLowerCase();
+    return indicacoes.filter((i) => {
+      if (!term) return true;
+      const searchable = [
+        i.usuario_nome,
+        i.nome_indicado,
+        i.tipo,
+        i.status,
+        i.valor_potencial == null ? "sem valor" : formatBRL(Number(i.valor_potencial)),
+        i.valor_projeto == null ? "sem projeto" : formatBRL(Number(i.valor_projeto)),
+        formatDate(i.created_at),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return searchable.includes(term);
+    });
+  }, [indicacoes, indicacoesSearch]);
+
+  const filteredFotos = useMemo(() => {
+    const term = fotosSearch.trim().toLowerCase();
+    if (!term) return fotos;
+    return fotos.filter((f) => {
+      const tipoProjetoLabel =
+        f.tipo_projeto === "usina_solar"
+          ? "usina solar"
+          : f.tipo_projeto === "carregador_veicular"
+            ? "carregador veicular"
+            : (f.tipo_projeto ?? "não informado");
+      const searchable = [
+        f.usuario_nome,
+        f.nome_indicado,
+        tipoProjetoLabel,
+        f.observacoes ?? "",
+        formatDate(f.created_at),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return searchable.includes(term);
+    });
+  }, [fotos, fotosSearch]);
+
+  const formatIndicacaoStatusLabel = (status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido") => {
+    if (status === "enviado") return "recebido";
+    return status;
+  };
+
+  const indicacoesElegiveisComissao = useMemo(
+    () => indicacoes.filter((i) => i.status === "negociacao" || i.status === "fechado"),
+    [indicacoes],
+  );
+
+  const filteredIndicacoesElegiveisComissao = useMemo(() => {
+    const term = comissoesDefinicaoSearch.trim().toLowerCase();
+    if (!term) return indicacoesElegiveisComissao;
+    return indicacoesElegiveisComissao.filter((i) => {
+      const searchable = [
+        i.usuario_nome,
+        i.nome_indicado,
+        i.tipo,
+        i.status,
+        i.valor_potencial == null ? "ainda não definido" : formatBRL(Number(i.valor_potencial)),
+        formatDate(i.created_at),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return searchable.includes(term);
+    });
+  }, [indicacoesElegiveisComissao, comissoesDefinicaoSearch]);
+
+  const comissoesDefinicaoTotalPages = Math.max(1, Math.ceil(filteredIndicacoesElegiveisComissao.length / 10));
+  const comissoesDefinicaoPageSafe = Math.min(comissoesDefinicaoPage, comissoesDefinicaoTotalPages);
+  const indicacoesElegiveisComissaoPaginadas = useMemo(() => {
+    const start = (comissoesDefinicaoPageSafe - 1) * 10;
+    return filteredIndicacoesElegiveisComissao.slice(start, start + 10);
+  }, [filteredIndicacoesElegiveisComissao, comissoesDefinicaoPageSafe]);
+
+  const filteredComissoesHistorico = useMemo(() => {
+    const term = comissoesHistoricoSearch.trim().toLowerCase();
+    if (!term) return comissoes;
+    return comissoes.filter((c) => {
+      const searchable = [c.usuario_nome, c.indicacao_nome, c.status, formatBRL(Number(c.valor)), formatDate(c.created_at)]
+        .join(" ")
+        .toLowerCase();
+      return searchable.includes(term);
+    });
+  }, [comissoes, comissoesHistoricoSearch]);
+
+  const comissoesHistoricoTotalPages = Math.max(1, Math.ceil(filteredComissoesHistorico.length / 10));
+  const comissoesHistoricoPageSafe = Math.min(comissoesHistoricoPage, comissoesHistoricoTotalPages);
+  const comissoesHistoricoPaginadas = useMemo(() => {
+    const start = (comissoesHistoricoPageSafe - 1) * 10;
+    return filteredComissoesHistorico.slice(start, start + 10);
+  }, [filteredComissoesHistorico, comissoesHistoricoPageSafe]);
+
+  useEffect(() => {
+    if (comissoesDefinicaoPage > comissoesDefinicaoTotalPages) setComissoesDefinicaoPage(comissoesDefinicaoTotalPages);
+    if (comissoesHistoricoPage > comissoesHistoricoTotalPages) setComissoesHistoricoPage(comissoesHistoricoTotalPages);
+  }, [
+    comissoesDefinicaoPage,
+    comissoesDefinicaoTotalPages,
+    comissoesHistoricoPage,
+    comissoesHistoricoTotalPages,
+  ]);
+
   return (
     <RequireAdmin>
       <div className="min-h-screen flex bg-background">
         <aside className="hidden lg:flex w-64 shrink-0 flex-col bg-[#024b2e] border-r border-[#04653f] sticky top-0 h-screen">
           <div className="px-6 py-5 border-b border-[#04653f]">
             <Link to="/" className="flex items-center justify-center">
-              <img src="/img/Ativo 3.png" alt="ATOM TECH" className="h-16 w-auto object-contain" />
+              <img
+                src="https://i.ibb.co/pv36YBgf/Ativo-3.png"
+                alt="ATOM TECH"
+                className="h-16 w-auto object-contain"
+              />
             </Link>
           </div>
           <nav className="flex-1 px-3 py-5 space-y-1">
@@ -425,6 +586,14 @@ function AdminRouteComponent() {
               <section className="rounded-2xl border border-zinc-200 bg-white">
                 <div className="px-5 py-4 border-b border-zinc-200">
                   <h3 className="text-lg font-semibold text-zinc-900">Usuários</h3>
+                  <div className="mt-3">
+                    <Input
+                      value={usuariosSearch}
+                      onChange={(e) => setUsuariosSearch(e.target.value)}
+                      placeholder='Buscar por nome, e-mail, WhatsApp, role/status ou data (ex.: "admin", "desativado", "ativo", "12/04/2026")'
+                      className="h-10"
+                    />
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm min-w-[900px]">
@@ -440,7 +609,12 @@ function AdminRouteComponent() {
                     </thead>
                     <tbody className="divide-y divide-zinc-100">
                       {loadingUsuarios && <tr><td colSpan={6} className="px-5 py-6 text-center text-zinc-500">Carregando usuários...</td></tr>}
-                      {usuarios.map((u) => (
+                      {!loadingUsuarios && filteredUsuarios.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="px-5 py-6 text-center text-zinc-500">Nenhum usuário encontrado para os filtros.</td>
+                        </tr>
+                      )}
+                      {filteredUsuarios.map((u) => (
                         <tr key={u.usuario_id} className={u.is_disabled ? "bg-rose-50/70" : undefined}>
                           <td className="px-5 py-3">{u.nome}</td>
                           <td className="px-5 py-3">{u.email}</td>
@@ -457,31 +631,22 @@ function AdminRouteComponent() {
                           </td>
                           <td className="px-5 py-3">{formatDate(u.created_at)}</td>
                           <td className="px-5 py-3">
-                            <div className="flex justify-end gap-2">
-                              <Button size="sm" type="button" onClick={() => promoteMutation.mutate(u.usuario_id)} disabled={u.role === "admin" || promoteMutation.isPending}>
-                                Promover admin
-                              </Button>
-                              {u.is_disabled ? (
-                                <Button
-                                  size="sm"
-                                  type="button"
-                                  variant="secondary"
-                                  onClick={() => reactivateMutation.mutate(u.usuario_id)}
-                                  disabled={reactivateMutation.isPending}
-                                >
-                                  Reativar
-                                </Button>
-                              ) : (
-                                <Button
-                                  size="sm"
-                                  type="button"
-                                  variant="secondary"
-                                  onClick={() => disableMutation.mutate(u.usuario_id)}
-                                  disabled={disableMutation.isPending}
-                                >
-                                  Desativar
-                                </Button>
-                              )}
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setActionUserModal({
+                                    usuario_id: u.usuario_id,
+                                    nome: u.nome,
+                                    role: u.role,
+                                    is_disabled: u.is_disabled,
+                                  })
+                                }
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                                aria-label="Abrir ações do usuário"
+                              >
+                                <MoreVertical className="h-4 w-4" />
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -496,6 +661,14 @@ function AdminRouteComponent() {
               <section className="rounded-2xl border border-zinc-200 bg-white">
                 <div className="px-5 py-4 border-b border-zinc-200">
                   <h3 className="text-lg font-semibold text-zinc-900">Indicações globais</h3>
+                  <div className="mt-3">
+                    <Input
+                      value={indicacoesSearch}
+                      onChange={(e) => setIndicacoesSearch(e.target.value)}
+                      placeholder='Buscar por usuário, indicado, tipo, status, valores ou data (ex.: "fechado", "negociação")'
+                      className="h-10"
+                    />
+                  </div>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm min-w-[980px]">
@@ -519,12 +692,19 @@ function AdminRouteComponent() {
                           </td>
                         </tr>
                       )}
-                      {indicacoes.map((i) => (
+                      {!loadingIndicacoes && filteredIndicacoes.length === 0 && (
+                        <tr>
+                          <td colSpan={8} className="px-5 py-6 text-center text-zinc-500">
+                            Nenhuma indicação encontrada para o filtro informado.
+                          </td>
+                        </tr>
+                      )}
+                      {filteredIndicacoes.map((i) => (
                         <tr key={i.id}>
                           <td className="px-5 py-3">{i.usuario_nome}</td>
                           <td className="px-5 py-3">{i.nome_indicado}</td>
                           <td className="px-5 py-3">{i.tipo}</td>
-                          <td className="px-5 py-3">{i.status}</td>
+                          <td className="px-5 py-3">{formatIndicacaoStatusLabel(i.status)}</td>
                           <td className="px-5 py-3">
                             {i.valor_potencial == null ? "—" : formatBRL(Number(i.valor_potencial))}
                           </td>
@@ -533,22 +713,20 @@ function AdminRouteComponent() {
                           </td>
                           <td className="px-5 py-3">{formatDate(i.created_at)}</td>
                           <td className="px-5 py-3 text-right">
-                            <select
-                              className="h-9 rounded-lg border border-zinc-300 bg-white px-2"
-                              value={i.status}
-                              onChange={(event) =>
-                                updateIndicacaoMutation.mutate({
-                                  indicacaoId: i.id,
-                                  status: event.target.value as "enviado" | "analise" | "negociacao" | "fechado" | "perdido",
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setActionIndicacaoModal({
+                                  id: i.id,
+                                  nome_indicado: i.nome_indicado,
+                                  status: i.status,
                                 })
                               }
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                              aria-label="Abrir ações da indicação"
                             >
-                              <option value="enviado">enviado</option>
-                              <option value="analise">analise</option>
-                              <option value="negociacao">negociacao</option>
-                              <option value="fechado">fechado</option>
-                              <option value="perdido">perdido</option>
-                            </select>
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -564,6 +742,17 @@ function AdminRouteComponent() {
                   <div className="px-5 py-4 border-b border-zinc-200">
                     <h3 className="text-lg font-semibold text-zinc-900">Definir comissão e projeto</h3>
                     <p className="text-xs text-zinc-500 px-5 pt-1">Indicações em negociação ou fechadas (definir valores)</p>
+                    <div className="mt-3">
+                      <Input
+                        value={comissoesDefinicaoSearch}
+                        onChange={(e) => {
+                          setComissoesDefinicaoSearch(e.target.value);
+                          setComissoesDefinicaoPage(1);
+                        }}
+                        placeholder='Buscar por usuário, indicado, tipo, status, valor ou data (ex.: "negociação", "fechado")'
+                        className="h-10"
+                      />
+                    </div>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm min-w-[900px]">
@@ -582,9 +771,14 @@ function AdminRouteComponent() {
                             <td colSpan={5} className="px-5 py-6 text-center text-zinc-500">Carregando indicações...</td>
                           </tr>
                         )}
-                        {indicacoes
-                          .filter((i) => i.status === "negociacao" || i.status === "fechado")
-                          .map((i) => (
+                        {!loadingIndicacoes && indicacoesElegiveisComissaoPaginadas.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="px-5 py-6 text-center text-zinc-500">
+                              Nenhuma indicação encontrada para o filtro informado.
+                            </td>
+                          </tr>
+                        )}
+                        {indicacoesElegiveisComissaoPaginadas.map((i) => (
                             <tr key={`neg-${i.id}`}>
                               <td className="px-5 py-3">{i.usuario_nome}</td>
                               <td className="px-5 py-3">{i.nome_indicado}</td>
@@ -606,11 +800,47 @@ function AdminRouteComponent() {
                       </tbody>
                     </table>
                   </div>
+                  {filteredIndicacoesElegiveisComissao.length > 0 && (
+                    <div className="flex items-center justify-between border-t border-zinc-200 px-5 py-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-8 px-3 text-xs"
+                        onClick={() => setComissoesDefinicaoPage((p) => Math.max(1, p - 1))}
+                        disabled={comissoesDefinicaoPageSafe === 1}
+                      >
+                        Anterior
+                      </Button>
+                      <p className="text-sm font-medium text-zinc-700">
+                        {comissoesDefinicaoPageSafe}/{comissoesDefinicaoTotalPages}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-8 px-3 text-xs"
+                        onClick={() => setComissoesDefinicaoPage((p) => Math.min(comissoesDefinicaoTotalPages, p + 1))}
+                        disabled={comissoesDefinicaoPageSafe === comissoesDefinicaoTotalPages}
+                      >
+                        Próxima
+                      </Button>
+                    </div>
+                  )}
                 </section>
 
                 <section className="rounded-2xl border border-zinc-200 bg-white">
                   <div className="px-5 py-4 border-b border-zinc-200">
                     <h3 className="text-lg font-semibold text-zinc-900">Comissões</h3>
+                    <div className="mt-3">
+                      <Input
+                        value={comissoesHistoricoSearch}
+                        onChange={(e) => {
+                          setComissoesHistoricoSearch(e.target.value);
+                          setComissoesHistoricoPage(1);
+                        }}
+                        placeholder='Buscar por usuário, indicação, status, valor ou data (ex.: "pago", "disponível")'
+                        className="h-10"
+                      />
+                    </div>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm min-w-[900px]">
@@ -625,7 +855,14 @@ function AdminRouteComponent() {
                       </thead>
                       <tbody className="divide-y divide-zinc-100">
                         {loadingComissoes && <tr><td colSpan={5} className="px-5 py-6 text-center text-zinc-500">Carregando comissões...</td></tr>}
-                        {comissoes.map((c) => (
+                        {!loadingComissoes && comissoesHistoricoPaginadas.length === 0 && (
+                          <tr>
+                            <td colSpan={5} className="px-5 py-6 text-center text-zinc-500">
+                              Nenhuma comissão encontrada para o filtro informado.
+                            </td>
+                          </tr>
+                        )}
+                        {comissoesHistoricoPaginadas.map((c) => (
                           <tr key={c.id}>
                             <td className="px-5 py-3">{c.usuario_nome}</td>
                             <td className="px-5 py-3">{c.indicacao_nome}</td>
@@ -646,6 +883,31 @@ function AdminRouteComponent() {
                       </tbody>
                     </table>
                   </div>
+                  {filteredComissoesHistorico.length > 0 && (
+                    <div className="flex items-center justify-between border-t border-zinc-200 px-5 py-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-8 px-3 text-xs"
+                        onClick={() => setComissoesHistoricoPage((p) => Math.max(1, p - 1))}
+                        disabled={comissoesHistoricoPageSafe === 1}
+                      >
+                        Anterior
+                      </Button>
+                      <p className="text-sm font-medium text-zinc-700">
+                        {comissoesHistoricoPageSafe}/{comissoesHistoricoTotalPages}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-8 px-3 text-xs"
+                        onClick={() => setComissoesHistoricoPage((p) => Math.min(comissoesHistoricoTotalPages, p + 1))}
+                        disabled={comissoesHistoricoPageSafe === comissoesHistoricoTotalPages}
+                      >
+                        Próxima
+                      </Button>
+                    </div>
+                  )}
                 </section>
               </div>
             )}
@@ -657,6 +919,14 @@ function AdminRouteComponent() {
                   <p className="text-sm text-zinc-600 mt-1">
                     Conta de energia e foto do padrão enviadas no cadastro da indicação.
                   </p>
+                  <div className="mt-3">
+                    <Input
+                      value={fotosSearch}
+                      onChange={(e) => setFotosSearch(e.target.value)}
+                      placeholder='Buscar por indicador, indicado, solução, observação ou data (ex.: "usina solar")'
+                      className="h-10"
+                    />
+                  </div>
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
@@ -666,7 +936,7 @@ function AdminRouteComponent() {
                     </div>
                   )}
                   {!loadingFotos &&
-                    fotos.map((f) => (
+                    filteredFotos.map((f) => (
                       <div key={f.id} className="rounded-2xl border border-zinc-200 bg-white p-4 md:p-5 shadow-sm">
                         <div className="mb-3">
                           <p className="text-sm text-zinc-600">Indicador</p>
@@ -674,12 +944,29 @@ function AdminRouteComponent() {
                           <p className="text-xs text-zinc-500 mt-1">
                             Indicado: {f.nome_indicado} • {formatDate(f.created_at)}
                           </p>
+                          <p className="text-xs text-zinc-700 mt-1">
+                            <span className="font-medium">Solução:</span>{" "}
+                            {f.tipo_projeto === "usina_solar"
+                              ? "Usina solar"
+                              : f.tipo_projeto === "carregador_veicular"
+                                ? "Carregador veicular"
+                                : "Não informada"}
+                          </p>
+                          <p className="text-xs text-zinc-700 mt-1">
+                            <span className="font-medium">Observações:</span> {f.observacoes?.trim() || "Sem observações."}
+                          </p>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="rounded-lg border border-zinc-200 p-2">
                             <p className="text-xs font-medium text-zinc-700 mb-2">Conta de energia</p>
                             {f.conta_energia_url ? (
-                              <img src={f.conta_energia_url} alt="Conta de energia" className="h-36 w-full rounded-md object-cover" />
+                              <button
+                                type="button"
+                                onClick={() => setZoomedFotoUrl(f.conta_energia_url)}
+                                className="block w-full overflow-hidden rounded-md"
+                              >
+                                <img src={f.conta_energia_url} alt="Conta de energia" className="h-36 w-full rounded-md object-cover" />
+                              </button>
                             ) : (
                               <div className="h-36 rounded-md bg-zinc-100 grid place-items-center text-xs text-zinc-500">Sem foto</div>
                             )}
@@ -687,7 +974,13 @@ function AdminRouteComponent() {
                           <div className="rounded-lg border border-zinc-200 p-2">
                             <p className="text-xs font-medium text-zinc-700 mb-2">Foto do padrão</p>
                             {f.foto_padrao_url ? (
-                              <img src={f.foto_padrao_url} alt="Foto do padrão" className="h-36 w-full rounded-md object-cover" />
+                              <button
+                                type="button"
+                                onClick={() => setZoomedFotoUrl(f.foto_padrao_url)}
+                                className="block w-full overflow-hidden rounded-md"
+                              >
+                                <img src={f.foto_padrao_url} alt="Foto do padrão" className="h-36 w-full rounded-md object-cover" />
+                              </button>
                             ) : (
                               <div className="h-36 rounded-md bg-zinc-100 grid place-items-center text-xs text-zinc-500">Sem foto</div>
                             )}
@@ -695,9 +988,9 @@ function AdminRouteComponent() {
                         </div>
                       </div>
                     ))}
-                  {!loadingFotos && fotos.length === 0 && (
+                  {!loadingFotos && filteredFotos.length === 0 && (
                     <div className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-500">
-                      Nenhuma foto anexada encontrada.
+                      Nenhuma foto anexada encontrada para o filtro informado.
                     </div>
                   )}
                 </div>
@@ -808,6 +1101,147 @@ function AdminRouteComponent() {
             </div>
           </div>
         </div>
+      )}
+
+      {actionUserModal && (
+        <div className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[1px] p-4 grid place-items-center">
+          <div className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-5">
+            <h3 className="text-lg font-semibold text-zinc-900">Ações do usuário</h3>
+            <p className="text-sm text-zinc-600 mt-1">
+              {actionUserModal.nome}
+            </p>
+
+            <div className="mt-4 space-y-2">
+              {actionUserModal.role !== "admin" ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    promoteMutation.mutate(actionUserModal.usuario_id);
+                    setActionUserModal(null);
+                  }}
+                  disabled={promoteMutation.isPending}
+                >
+                  Promover admin
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                  onClick={() => {
+                    revokeAdminMutation.mutate(actionUserModal.usuario_id);
+                    setActionUserModal(null);
+                  }}
+                  disabled={revokeAdminMutation.isPending}
+                >
+                  Revogar admin
+                </Button>
+              )}
+
+              {actionUserModal.is_disabled ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    reactivateMutation.mutate(actionUserModal.usuario_id);
+                    setActionUserModal(null);
+                  }}
+                  disabled={reactivateMutation.isPending}
+                >
+                  Reativar usuário
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    disableMutation.mutate(actionUserModal.usuario_id);
+                    setActionUserModal(null);
+                  }}
+                  disabled={disableMutation.isPending}
+                >
+                  Desativar usuário
+                </Button>
+              )}
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <Button type="button" variant="secondary" onClick={() => setActionUserModal(null)}>
+                Fechar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {actionIndicacaoModal && (
+        <div className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[1px] p-4 grid place-items-center">
+          <div className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-5">
+            <h3 className="text-lg font-semibold text-zinc-900">Ações da indicação</h3>
+            <p className="text-sm text-zinc-600 mt-1">
+              {actionIndicacaoModal.nome_indicado}
+            </p>
+
+            <div className="mt-4">
+              <Label htmlFor="indicacao-status-admin">Status</Label>
+              <select
+                id="indicacao-status-admin"
+                className="mt-1.5 h-10 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-700"
+                value={actionIndicacaoModal.status}
+                onChange={(event) =>
+                  setActionIndicacaoModal((prev) =>
+                    prev
+                      ? {
+                          ...prev,
+                          status: event.target.value as "enviado" | "analise" | "negociacao" | "fechado" | "perdido",
+                        }
+                      : prev,
+                  )
+                }
+              >
+                <option value="enviado">recebido</option>
+                <option value="analise">analise</option>
+                <option value="negociacao">negociacao</option>
+                <option value="fechado">fechado</option>
+                <option value="perdido">perdido</option>
+              </select>
+            </div>
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setActionIndicacaoModal(null)}>
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  updateIndicacaoMutation.mutate({
+                    indicacaoId: actionIndicacaoModal.id,
+                    status: actionIndicacaoModal.status,
+                  });
+                  setActionIndicacaoModal(null);
+                }}
+                disabled={updateIndicacaoMutation.isPending}
+              >
+                Salvar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {zoomedFotoUrl && (
+        <button
+          type="button"
+          onClick={() => setZoomedFotoUrl(null)}
+          className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4"
+          aria-label="Fechar visualização da foto"
+        >
+          <img src={zoomedFotoUrl} alt="Foto ampliada" className="max-h-[90vh] max-w-[90vw] rounded-xl object-contain" />
+        </button>
       )}
     </RequireAdmin>
   );

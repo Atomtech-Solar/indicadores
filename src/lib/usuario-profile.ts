@@ -1,6 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 
-export async function upsertUsuarioProfile(input: { nome: string; whatsapp: string }) {
+export async function upsertUsuarioProfile(input: { nome: string; whatsapp: string; fotoPerfilUrl?: string | null }) {
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -11,6 +11,7 @@ export async function upsertUsuarioProfile(input: { nome: string; whatsapp: stri
       usuario_id: session.user.id,
       nome: input.nome,
       whatsapp: input.whatsapp,
+      foto_perfil_url: input.fotoPerfilUrl ?? null,
     },
     { onConflict: "usuario_id" },
   );

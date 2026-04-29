@@ -93,7 +93,9 @@ export type Database = {
           foto_padrao_url: string | null;
           id: number;
           nome_indicado: string;
+          observacoes: string | null;
           status: string;
+          tipo_projeto: string | null;
           tipo: string;
           usuario_id: number;
           updated_at: string;
@@ -108,7 +110,9 @@ export type Database = {
           foto_padrao_url?: string | null;
           id?: number;
           nome_indicado: string;
+          observacoes?: string | null;
           status?: string;
+          tipo_projeto?: string | null;
           tipo: string;
           usuario_id: number;
           updated_at?: string;
@@ -123,7 +127,9 @@ export type Database = {
           foto_padrao_url?: string | null;
           id?: number;
           nome_indicado?: string;
+          observacoes?: string | null;
           status?: string;
+          tipo_projeto?: string | null;
           tipo?: string;
           usuario_id?: number;
           updated_at?: string;
@@ -145,6 +151,7 @@ export type Database = {
       usuarios: {
         Row: {
           created_at: string;
+          foto_perfil_url: string | null;
           id: number;
           nome: string;
           role: string;
@@ -153,6 +160,7 @@ export type Database = {
         };
         Insert: {
           created_at?: string;
+          foto_perfil_url?: string | null;
           id?: number;
           nome: string;
           role?: string;
@@ -161,6 +169,7 @@ export type Database = {
         };
         Update: {
           created_at?: string;
+          foto_perfil_url?: string | null;
           id?: number;
           nome?: string;
           role?: string;
