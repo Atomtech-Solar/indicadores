@@ -1,11 +1,14 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/lib/supabase/client";
+import { useAuth } from "@/components/auth/auth-context";
+import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
+import { resolvePostLoginDestination } from "@/lib/auth-routes";
 
 type LoginSearch = { redirect?: string; email?: string };
 
@@ -35,9 +38,16 @@ function Login() {
   const navigate = useNavigate();
   const { redirect, email: emailFromSearch } = Route.useSearch();
   const safeRedirect = sanitizeRedirect(redirect);
+  const { user, isAdmin, authReady } = useAuth();
   const [email, setEmail] = useState(emailFromSearch ?? "");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!authReady || !user) return;
+    const destination = resolvePostLoginDestination({ isAdmin, redirect: safeRedirect });
+    void navigate({ to: destination, replace: true });
+  }, [authReady, user, isAdmin, safeRedirect, navigate]);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -63,11 +73,11 @@ function Login() {
         return;
       }
 
-      let destination = safeRedirect || "/dashboard";
-      const { data: isAdmin } = await supabase.rpc("is_admin");
-      if (isAdmin === true) {
-        destination = "/admin";
-      }
+      const { data: isAdminRpc } = await supabase.rpc("is_admin");
+      const destination = resolvePostLoginDestination({
+        isAdmin: isAdminRpc === true,
+        redirect: safeRedirect,
+      });
 
       navigate({ to: destination, replace: true });
     } catch {
@@ -76,6 +86,14 @@ function Login() {
       setLoading(false);
     }
   };
+
+  if (!authReady) {
+    return <AuthLoadingScreen active message="Verificando sessão…" />;
+  }
+
+  if (user) {
+    return <AuthLoadingScreen active={false} message="Redirecionando…" />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-hero flex flex-col">

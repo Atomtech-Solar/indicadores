@@ -16,6 +16,9 @@ type AuthContextValue = {
   user: User | null;
   role: "indicador" | "admin" | null;
   isAdmin: boolean;
+  /** Sessão inicial lida e papel resolvido (ou usuário ausente). */
+  authReady: boolean;
+  /** @deprecated use authReady — mantido para compatibilidade (equivale a !authReady) */
   isLoading: boolean;
 };
 
@@ -25,51 +28,88 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<"indicador" | "admin" | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [authReady, setAuthReady] = useState(false);
   const roleFetchSeqRef = useRef(0);
+  const lastUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
-    const fetchRole = async (hasUser: boolean) => {
-      const fetchSeq = ++roleFetchSeqRef.current;
 
-      if (!hasUser) {
-        if (isMounted && fetchSeq === roleFetchSeqRef.current) setRole(null);
+    const resolveRole = async (authUserId: string | null) => {
+      const seq = ++roleFetchSeqRef.current;
+
+      if (!authUserId) {
+        if (!isMounted || seq !== roleFetchSeqRef.current) return;
+        setRole(null);
         return;
       }
 
       const { data, error } = await supabase.rpc("is_admin");
+      if (!isMounted || seq !== roleFetchSeqRef.current) return;
 
-      if (!isMounted || fetchSeq !== roleFetchSeqRef.current) return;
       if (error) {
         setRole("indicador");
         return;
       }
 
-      const resolvedRole = data === true ? "admin" : "indicador";
-      setRole(resolvedRole);
+      setRole(data === true ? "admin" : "indicador");
+    };
+
+    const finishBootstrap = () => {
+      if (isMounted) setAuthReady(true);
     };
 
     const bootstrap = async () => {
+      setAuthReady(false);
       const {
         data: { session: initialSession },
       } = await supabase.auth.getSession();
 
       if (!isMounted) return;
+
+      const uid = initialSession?.user?.id ?? null;
+      lastUserIdRef.current = uid;
       setSession(initialSession);
       setUser(initialSession?.user ?? null);
-      await fetchRole(Boolean(initialSession?.user));
-      setIsLoading(false);
+
+      if (!uid) {
+        setRole(null);
+        finishBootstrap();
+        return;
+      }
+
+      setRole(null);
+      await resolveRole(uid);
+      finishBootstrap();
     };
 
     void bootstrap();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange(async (_event, nextSession) => {
+      const nextId = nextSession?.user?.id ?? null;
+      const prevId = lastUserIdRef.current;
+
+      if (nextId !== prevId) {
+        lastUserIdRef.current = nextId;
+        setAuthReady(false);
+        setRole(null);
+      }
+
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
-      void fetchRole(Boolean(nextSession?.user));
+
+      if (!nextId) {
+        setRole(null);
+        setAuthReady(true);
+        void queryClient.invalidateQueries({ queryKey: ["auth"] });
+        void queryClient.invalidateQueries({ queryKey: ["usuario"] });
+        return;
+      }
+
+      await resolveRole(nextId);
+      setAuthReady(true);
 
       void queryClient.invalidateQueries({ queryKey: ["auth"] });
       void queryClient.invalidateQueries({ queryKey: ["usuario"] });
@@ -89,9 +129,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       role,
       isAdmin: role === "admin",
-      isLoading,
+      authReady,
+      isLoading: !authReady,
     }),
-    [session, user, role, isLoading],
+    [session, user, role, authReady],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

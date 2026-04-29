@@ -1,25 +1,22 @@
 import { useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/components/auth/auth-context";
+import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
 
+/** Rotas exclusivas do administrador — indicadores são redirecionados para /dashboard. */
 export function RequireAdmin({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isAdmin, isLoading } = useAuth();
+  const { user, isAdmin, authReady } = useAuth();
   const isRedirectingRef = useRef(false);
 
   useEffect(() => {
-    if (isLoading) return;
-
-    if (user && isAdmin) {
-      isRedirectingRef.current = false;
-      return;
-    }
-
-    if (isRedirectingRef.current) return;
-    isRedirectingRef.current = true;
+    if (!authReady) return;
 
     if (!user) {
+      if (isRedirectingRef.current) return;
+      isRedirectingRef.current = true;
+
       const currentPath = `${location.pathname}${location.searchStr}`;
       const shouldAttachRedirect =
         !currentPath.startsWith("/login") &&
@@ -35,19 +32,26 @@ export function RequireAdmin({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    void navigate({ to: "/dashboard", replace: true });
-  }, [isLoading, user, isAdmin, navigate, location.pathname, location.searchStr]);
+    if (!isAdmin) {
+      if (isRedirectingRef.current) return;
+      isRedirectingRef.current = true;
+      void navigate({ to: "/dashboard", replace: true });
+      return;
+    }
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen grid place-items-center px-6">
-        <p className="text-sm text-muted-foreground">Validando permissões...</p>
-      </div>
-    );
+    isRedirectingRef.current = false;
+  }, [authReady, user, isAdmin, navigate, location.pathname, location.searchStr]);
+
+  if (!authReady) {
+    return <AuthLoadingScreen active message="Validando permissões…" />;
   }
 
-  if (!user || !isAdmin) {
+  if (!user) {
     return null;
+  }
+
+  if (!isAdmin) {
+    return <AuthLoadingScreen active={false} message="Redirecionando para o painel do indicador…" />;
   }
 
   return <>{children}</>;

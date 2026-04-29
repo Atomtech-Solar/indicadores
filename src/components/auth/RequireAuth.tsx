@@ -1,48 +1,57 @@
 import { useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useAuth } from "@/components/auth/auth-context";
+import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
 
+/** Rotas exclusivas do indicador — administradores são redirecionados para /admin. */
 export function RequireAuth({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, isLoading } = useAuth();
+  const { user, isAdmin, authReady } = useAuth();
   const isRedirectingRef = useRef(false);
 
   useEffect(() => {
-    if (isLoading) return;
+    if (!authReady) return;
 
-    if (user) {
-      isRedirectingRef.current = false;
+    if (!user) {
+      if (isRedirectingRef.current) return;
+      isRedirectingRef.current = true;
+
+      const currentPath = `${location.pathname}${location.searchStr}`;
+      const shouldAttachRedirect =
+        !currentPath.startsWith("/login") &&
+        !currentPath.startsWith("/cadastro") &&
+        !currentPath.startsWith("/confirmacao") &&
+        !currentPath.startsWith("/confirmacao-cadastro");
+
+      void navigate({
+        to: "/login",
+        search: shouldAttachRedirect ? { redirect: currentPath } : {},
+        replace: true,
+      });
       return;
     }
 
-    if (isRedirectingRef.current) return;
-    isRedirectingRef.current = true;
+    if (isAdmin) {
+      if (isRedirectingRef.current) return;
+      isRedirectingRef.current = true;
+      void navigate({ to: "/admin", replace: true });
+      return;
+    }
 
-    const currentPath = `${location.pathname}${location.searchStr}`;
-    const shouldAttachRedirect =
-      !currentPath.startsWith("/login") &&
-      !currentPath.startsWith("/cadastro") &&
-      !currentPath.startsWith("/confirmacao") &&
-      !currentPath.startsWith("/confirmacao-cadastro");
+    isRedirectingRef.current = false;
+  }, [authReady, user, isAdmin, navigate, location.pathname, location.searchStr]);
 
-    void navigate({
-      to: "/login",
-      search: shouldAttachRedirect ? { redirect: currentPath } : {},
-      replace: true,
-    });
-  }, [isLoading, user, navigate, location.pathname, location.searchStr]);
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen grid place-items-center px-6">
-        <p className="text-sm text-muted-foreground">Verificando autenticação...</p>
-      </div>
-    );
+  if (!authReady) {
+    return <AuthLoadingScreen active message="Verificando sua sessão…" />;
   }
 
   if (!user) {
     return null;
+  }
+
+  if (isAdmin) {
+    return <AuthLoadingScreen active={false} message="Redirecionando para o painel administrativo…" />;
   }
 
   return <>{children}</>;

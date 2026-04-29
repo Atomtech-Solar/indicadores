@@ -11,6 +11,11 @@ export const Route = createFileRoute("/onboarding")({
       throw redirect({ to: "/login" });
     }
 
+    const { data: isAdmin } = await supabase.rpc("is_admin");
+    if (isAdmin === true) {
+      throw redirect({ to: "/admin" });
+    }
+
     throw redirect({ to: "/pos-cadastro" });
   },
   component: OnboardingRedirect,

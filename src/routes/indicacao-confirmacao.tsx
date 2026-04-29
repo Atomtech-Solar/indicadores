@@ -24,6 +24,10 @@ export const Route = createFileRoute("/indicacao-confirmacao")({
         search: { redirect: `${location.pathname}${location.searchStr}` },
       });
     }
+    const { data: isAdmin } = await supabase.rpc("is_admin");
+    if (isAdmin === true) {
+      throw redirect({ to: "/admin" });
+    }
   },
   head: () => ({
     meta: [{ title: "Indicação enviada — ATOM TECH" }],
