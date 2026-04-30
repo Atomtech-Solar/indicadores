@@ -521,11 +521,11 @@ function Dashboard() {
 
   const handleSignOut = async () => {
     try {
-      const { error } = await supabase.auth.signOut();
+      const { error } = await supabase.auth.signOut({ scope: "local" });
       if (error) throw error;
       toast.success("Você saiu da conta.");
       setShowProfileMenu(false);
-      navigate({ to: "/login" });
+      navigate({ to: "/login", replace: true });
     } catch {
       toast.error("Não foi possível sair agora. Tente novamente.");
     }
@@ -1681,11 +1681,15 @@ function NovaIndicacaoModal({
   onSent: (id: number) => void;
   queryClient: ReturnType<typeof useQueryClient>;
 }) {
+  const opcoesInteresse = [
+    { value: "usina_solar", label: "Usina solar" },
+    { value: "carregador_veicular", label: "Carregador veicular" },
+  ] as const;
   const [form, setForm] = useState({
     nome: "",
     whatsapp: "",
     tipo: "Pessoa" as IndicacaoTipo,
-    tipoProjeto: "",
+    tipoProjetos: [] as string[],
     observacoes: "",
   });
   const [contaEnergiaFile, setContaEnergiaFile] = useState<File | null>(null);
@@ -1762,7 +1766,7 @@ function NovaIndicacaoModal({
           nome_indicado: form.nome.trim(),
           whatsapp: form.whatsapp.trim(),
           tipo: mapTipoToDb(form.tipo),
-          tipo_projeto: form.tipoProjeto || null,
+          tipo_projeto: form.tipoProjetos.length ? form.tipoProjetos.join(",") : null,
           observacoes: form.observacoes.trim() || null,
           conta_energia_url: contaEnergiaPath,
           foto_padrao_url: fotoPadraoPath,
@@ -1917,19 +1921,33 @@ function NovaIndicacaoModal({
             {fotoPadraoError && <p className="mt-1 text-xs text-rose-600">{fotoPadraoError}</p>}
           </div>
           <div>
-            <Label htmlFor="m-tipo-projeto" className="text-sm font-medium">
+            <Label className="text-sm font-medium">
               Solução de interesse
             </Label>
-            <select
-              id="m-tipo-projeto"
-              value={form.tipoProjeto}
-              onChange={(e) => setForm({ ...form, tipoProjeto: e.target.value })}
-              className="mt-1.5 h-11 w-full rounded-[10px] border border-input bg-background px-3 text-sm"
-            >
-              <option value="">Selecione uma opção</option>
-              <option value="usina_solar">Usina solar</option>
-              <option value="carregador_veicular">Carregador veicular</option>
-            </select>
+            <div className="mt-2 space-y-2 rounded-[10px] border border-input bg-background p-3">
+              {opcoesInteresse.map((opcao) => {
+                const checked = form.tipoProjetos.includes(opcao.value);
+                return (
+                  <label key={opcao.value} className="flex cursor-pointer items-center gap-3 text-sm text-zinc-800">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          tipoProjetos: e.target.checked
+                            ? [...prev.tipoProjetos, opcao.value]
+                            : prev.tipoProjetos.filter((value) => value !== opcao.value),
+                        }))
+                      }
+                      className="h-4 w-4 rounded-full border-zinc-400 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span>{opcao.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-xs text-zinc-500">Você pode selecionar uma ou mais opções.</p>
           </div>
           <div>
             <Label htmlFor="m-observacoes" className="text-sm font-medium">

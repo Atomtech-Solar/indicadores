@@ -31,6 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authReady, setAuthReady] = useState(false);
   const roleFetchSeqRef = useRef(0);
   const lastUserIdRef = useRef<string | null>(null);
+  const roleCacheRef = useRef<Map<string, "indicador" | "admin">>(new Map());
   /** Recarga por atalho (F5 / Ctrl+R / Cmd+R): não limpa sessão no pagehide. Botão do browser ainda pode encerrar sessão. */
   const reloadViaKeyboardRef = useRef(false);
 
@@ -46,6 +47,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      const cachedRole = roleCacheRef.current.get(authUserId);
+      if (cachedRole) {
+        if (!isMounted || seq !== roleFetchSeqRef.current) return;
+        setRole(cachedRole);
+        return;
+      }
+
       const { data, error } = await supabase.rpc("is_admin");
       if (!isMounted || seq !== roleFetchSeqRef.current) return;
 
@@ -54,7 +62,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      setRole(data === true ? "admin" : "indicador");
+      const resolvedRole = data === true ? "admin" : "indicador";
+      roleCacheRef.current.set(authUserId, resolvedRole);
+      setRole(resolvedRole);
     };
 
     const finishBootstrap = () => {
@@ -108,6 +118,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         void queryClient.invalidateQueries({ queryKey: ["auth"] });
         void queryClient.invalidateQueries({ queryKey: ["usuario"] });
         return;
+      }
+
+      if (nextId === prevId) {
+        const cachedRole = roleCacheRef.current.get(nextId);
+        if (cachedRole) {
+          setRole(cachedRole);
+          setAuthReady(true);
+          return;
+        }
       }
 
       await resolveRole(nextId);

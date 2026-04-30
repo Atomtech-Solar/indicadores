@@ -59,9 +59,29 @@ function AdminRouteComponent() {
     status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido";
   } | null>(null);
   const [zoomedFotoUrl, setZoomedFotoUrl] = useState<string | null>(null);
+  const shouldLoadOverview = activeTab === "overview";
+  const shouldLoadUsuarios = activeTab === "usuarios";
+  const shouldLoadFotos = activeTab === "fotos";
+  const shouldLoadIndicacoes = activeTab === "indicacoes" || activeTab === "comissoes";
+  const shouldLoadComissoes = activeTab === "comissoes";
+  const shouldLoadReports = activeTab === "relatorios";
+  const formatTipoProjeto = (value: string | null) => {
+    if (!value?.trim()) return "Não informada";
+    const labels = value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((item) => {
+        if (item === "usina_solar") return "Usina solar";
+        if (item === "carregador_veicular") return "Carregador veicular";
+        return item;
+      });
+    return labels.length ? labels.join(" • ") : "Não informada";
+  };
 
   const { data: overview, isLoading: loadingOverview } = useQuery({
     queryKey: ["admin-overview"],
+    enabled: shouldLoadOverview,
     retry: false,
     refetchOnWindowFocus: false,
     queryFn: () =>
@@ -88,6 +108,7 @@ function AdminRouteComponent() {
 
   const { data: usuarios = [], isLoading: loadingUsuarios } = useQuery({
     queryKey: ["admin-usuarios"],
+    enabled: shouldLoadUsuarios,
     retry: false,
     refetchOnWindowFocus: false,
     queryFn: () =>
@@ -107,6 +128,7 @@ function AdminRouteComponent() {
 
   const { data: fotos = [], isLoading: loadingFotos } = useQuery({
     queryKey: ["admin-fotos"],
+    enabled: shouldLoadFotos,
     retry: false,
     refetchOnWindowFocus: false,
     queryFn: () =>
@@ -115,6 +137,7 @@ function AdminRouteComponent() {
           id: number;
           usuario_nome: string;
           nome_indicado: string;
+          whatsapp: string | null;
           tipo_projeto: string | null;
           observacoes: string | null;
           conta_energia_url: string | null;
@@ -126,6 +149,7 @@ function AdminRouteComponent() {
 
   const { data: indicacoes = [], isLoading: loadingIndicacoes } = useQuery({
     queryKey: ["admin-indicacoes"],
+    enabled: shouldLoadIndicacoes,
     retry: false,
     refetchOnWindowFocus: false,
     queryFn: () =>
@@ -147,6 +171,7 @@ function AdminRouteComponent() {
 
   const { data: comissoes = [], isLoading: loadingComissoes } = useQuery({
     queryKey: ["admin-comissoes"],
+    enabled: shouldLoadComissoes,
     retry: false,
     refetchOnWindowFocus: false,
     queryFn: () =>
@@ -164,6 +189,7 @@ function AdminRouteComponent() {
 
   const { data: reports, isLoading: loadingReports } = useQuery({
     queryKey: ["admin-reports"],
+    enabled: shouldLoadReports,
     retry: false,
     refetchOnWindowFocus: false,
     queryFn: () =>
@@ -177,8 +203,10 @@ function AdminRouteComponent() {
   const promoteMutation = useMutation({
     mutationFn: (userId: string) => callAdminOpsMutation({ action: "set_user_role", userId, role: "admin" }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"] });
-      await queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"], exact: true });
+      if (shouldLoadOverview) {
+        await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
+      }
       toast.success("Usuário promovido para admin.");
     },
     onError: () => toast.error("Não foi possível promover o usuário."),
@@ -187,8 +215,10 @@ function AdminRouteComponent() {
   const revokeAdminMutation = useMutation({
     mutationFn: (userId: string) => callAdminOpsMutation({ action: "set_user_role", userId, role: "indicador" }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"] });
-      await queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"], exact: true });
+      if (shouldLoadOverview) {
+        await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
+      }
       toast.success("Privilégio de admin revogado.");
     },
     onError: () => toast.error("Não foi possível revogar admin."),
@@ -197,7 +227,7 @@ function AdminRouteComponent() {
   const disableMutation = useMutation({
     mutationFn: (userId: string) => callAdminOpsMutation({ action: "disable_user", userId }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"], exact: true });
       toast.success("Usuário desativado com sucesso.");
     },
     onError: () => toast.error("Não foi possível desativar o usuário."),
@@ -206,7 +236,7 @@ function AdminRouteComponent() {
   const reactivateMutation = useMutation({
     mutationFn: (userId: string) => callAdminOpsMutation({ action: "reactivate_user", userId }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"], exact: true });
       toast.success("Usuário reativado com sucesso.");
     },
     onError: () => toast.error("Não foi possível reativar o usuário."),
@@ -216,8 +246,10 @@ function AdminRouteComponent() {
     mutationFn: ({ indicacaoId, status }: { indicacaoId: number; status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido" }) =>
       callAdminOpsMutation({ action: "update_indicacao_status", indicacaoId, status }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"] });
-      await queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"], exact: true });
+      if (shouldLoadOverview) {
+        await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
+      }
       toast.success("Status da indicação atualizado.");
     },
     onError: () => toast.error("Não foi possível atualizar a indicação."),
@@ -227,8 +259,10 @@ function AdminRouteComponent() {
     mutationFn: ({ comissaoId, status }: { comissaoId: number; status: "pendente" | "disponivel" | "pago" | "cancelado" }) =>
       callAdminOpsMutation({ action: "update_comissao_status", comissaoId, status }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-comissoes"] });
-      await queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-comissoes"], exact: true });
+      if (shouldLoadOverview) {
+        await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
+      }
       toast.success("Status da comissão atualizado.");
     },
     onError: () => toast.error("Não foi possível atualizar a comissão."),
@@ -252,9 +286,11 @@ function AdminRouteComponent() {
       });
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-comissoes"] });
-      await queryClient.invalidateQueries({ queryKey: ["admin-overview"] });
-      await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-comissoes"], exact: true });
+      await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"], exact: true });
+      if (shouldLoadOverview) {
+        await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
+      }
       toast.success("Comissão definida com sucesso.");
       setCommissionModal(null);
       setCommissionValue("");
@@ -266,7 +302,7 @@ function AdminRouteComponent() {
   });
 
   const handleSignOut = async () => {
-    const { error } = await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut({ scope: "local" });
     if (error) {
       toast.error("Não foi possível sair agora.");
       return;
@@ -330,15 +366,11 @@ function AdminRouteComponent() {
     const term = fotosSearch.trim().toLowerCase();
     if (!term) return fotos;
     return fotos.filter((f) => {
-      const tipoProjetoLabel =
-        f.tipo_projeto === "usina_solar"
-          ? "usina solar"
-          : f.tipo_projeto === "carregador_veicular"
-            ? "carregador veicular"
-            : (f.tipo_projeto ?? "não informado");
+      const tipoProjetoLabel = formatTipoProjeto(f.tipo_projeto).toLowerCase();
       const searchable = [
         f.usuario_nome,
         f.nome_indicado,
+        f.whatsapp ?? "",
         tipoProjetoLabel,
         f.observacoes ?? "",
         formatDate(f.created_at),
@@ -945,12 +977,11 @@ function AdminRouteComponent() {
                             Indicado: {f.nome_indicado} • {formatDate(f.created_at)}
                           </p>
                           <p className="text-xs text-zinc-700 mt-1">
+                            <span className="font-medium">WhatsApp do indicado:</span> {f.whatsapp?.trim() || "Não informado"}
+                          </p>
+                          <p className="text-xs text-zinc-700 mt-1">
                             <span className="font-medium">Solução:</span>{" "}
-                            {f.tipo_projeto === "usina_solar"
-                              ? "Usina solar"
-                              : f.tipo_projeto === "carregador_veicular"
-                                ? "Carregador veicular"
-                                : "Não informada"}
+                            {formatTipoProjeto(f.tipo_projeto)}
                           </p>
                           <p className="text-xs text-zinc-700 mt-1">
                             <span className="font-medium">Observações:</span> {f.observacoes?.trim() || "Sem observações."}
