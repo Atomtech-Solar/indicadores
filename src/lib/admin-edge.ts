@@ -2,14 +2,14 @@ import { supabase } from "@/lib/supabase/client";
 
 type AdminAction =
   | { action: "overview" }
-  | { action: "list_users" }
+  | { action: "list_users"; page?: number; limit?: number; search?: string }
   | { action: "set_user_role"; userId: string; role: "indicador" | "admin" }
   | { action: "disable_user"; userId: string }
   | { action: "reactivate_user"; userId: string }
-  | { action: "list_indicacoes" }
+  | { action: "list_indicacoes"; page?: number; limit?: number; search?: string; onlyCommissionEligible?: boolean }
   | { action: "update_indicacao_status"; indicacaoId: number; status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido" }
-  | { action: "list_comissoes" }
-  | { action: "list_fotos" }
+  | { action: "list_comissoes"; page?: number; limit?: number; search?: string }
+  | { action: "list_fotos"; page?: number; limit?: number; search?: string }
   | { action: "update_comissao_status"; comissaoId: number; status: "pendente" | "disponivel" | "pago" | "cancelado" }
   | { action: "reports" };
 

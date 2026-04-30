@@ -76,6 +76,10 @@ function formatPotentialValue(value: number | null | undefined) {
   return formatBRL(Number(value));
 }
 
+function normalizeComissaoStatus(status: "pendente" | "disponivel" | "pago" | "cancelado") {
+  return status === "disponivel" ? "pendente" : status;
+}
+
 function last6MonthLabels() {
   const out: { key: string; label: string }[] = [];
   const now = new Date();
@@ -125,6 +129,7 @@ function Dashboard() {
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
   const [indicacoesSearch, setIndicacoesSearch] = useState("");
+  const [indicacoesTabPage, setIndicacoesTabPage] = useState(1);
   const [expandedRecentIndicacaoId, setExpandedRecentIndicacaoId] = useState<number | null>(null);
   const [expandedMyIndicacaoId, setExpandedMyIndicacaoId] = useState<number | null>(null);
   const [expandedComissaoId, setExpandedComissaoId] = useState<number | null>(null);
@@ -141,6 +146,8 @@ function Dashboard() {
   const [editFotoPadraoError, setEditFotoPadraoError] = useState<string | null>(null);
   const [editContaEnergiaSignedUrl, setEditContaEnergiaSignedUrl] = useState<string | null>(null);
   const [editFotoPadraoSignedUrl, setEditFotoPadraoSignedUrl] = useState<string | null>(null);
+  const indicacoesSearchDebounced = useDebouncedValue(indicacoesSearch, 500);
+  const INDICACOES_TAB_PAGE_SIZE = 10;
 
   const { data: profile } = useQuery({
     queryKey: ["usuario"],
@@ -297,7 +304,46 @@ function Dashboard() {
   });
 
   const funnelStats = funnelFilter === "custom" ? localFunnelStats : (funnelStatsRpc ?? localFunnelStats);
-  const indicacoesTabRows = funnelFilter === "custom" ? funnelIndicacoes : (indicacoesByPeriodRpc ?? indicacoes);
+  const { data: indicacoesTabQuery, isLoading: loadingIndicacoesTab } = useQuery({
+    queryKey: ["indicacoes-tab-server", funnelFilter, customStartDate, customEndDate, indicacoesSearchDebounced, indicacoesTabPage],
+    enabled: activeTab === "indicacoes",
+    queryFn: async () => {
+      const from = (indicacoesTabPage - 1) * INDICACOES_TAB_PAGE_SIZE;
+      const to = from + INDICACOES_TAB_PAGE_SIZE - 1;
+      let query = supabase
+        .from("indicacoes")
+        .select("id, nome_indicado, whatsapp, tipo, status, valor_potencial, created_at", { count: "exact" })
+        .order("created_at", { ascending: false });
+
+      if (funnelFilter === "today") {
+        const startOfToday = new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
+        query = query.gte("created_at", startOfToday);
+      } else if (funnelFilter === "week") {
+        const startOfWeek = new Date();
+        startOfWeek.setDate(startOfWeek.getDate() - 7);
+        query = query.gte("created_at", startOfWeek.toISOString());
+      } else if (funnelFilter === "month") {
+        const nowDate = new Date();
+        const startOfMonth = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1).toISOString();
+        query = query.gte("created_at", startOfMonth);
+      } else {
+        if (customStartDate) query = query.gte("created_at", `${customStartDate}T00:00:00`);
+        if (customEndDate) query = query.lte("created_at", `${customEndDate}T23:59:59`);
+      }
+
+      if (indicacoesSearchDebounced.trim()) {
+        const term = indicacoesSearchDebounced.trim();
+        query = query.or(`nome_indicado.ilike.%${term}%,whatsapp.ilike.%${term}%,tipo.ilike.%${term}%,status.ilike.%${term}%`);
+      }
+
+      const { data, error, count } = await query.range(from, to);
+      if (error) throw error;
+      return {
+        items: (data ?? []) as Pick<Tables<"indicacoes">, "id" | "nome_indicado" | "whatsapp" | "tipo" | "status" | "valor_potencial" | "created_at">[],
+        total: count ?? 0,
+      };
+    },
+  });
 
   const loading = loadingInd || loadingCom;
   const indicacaoNomeById = useMemo(() => {
@@ -306,33 +352,16 @@ function Dashboard() {
     return out;
   }, [indicacoes]);
 
-  const indicacaoWhatsappById = useMemo(() => {
-    const out = new Map<number, string>();
-    for (const i of indicacoes) out.set(Number(i.id), i.whatsapp);
-    return out;
-  }, [indicacoes]);
-
-  const filteredIndicacoesTabRows = useMemo(() => {
-    const term = indicacoesSearch.trim().toLowerCase();
-    if (!term) return indicacoesTabRows;
-
-    return indicacoesTabRows.filter((i) => {
-      const whatsapp = indicacaoWhatsappById.get(Number(i.id)) ?? "";
-      const tipo = mapTipoDbToUi(i.tipo).toLowerCase();
-      const status = dbStatusToUi(i.status).toLowerCase();
-      const valor = formatPotentialValue(i.valor_potencial).toLowerCase();
-      const data = formatDate(i.created_at).toLowerCase();
-      const nome = i.nome_indicado.toLowerCase();
-
-      return [nome, whatsapp.toLowerCase(), tipo, status, valor, data].some((value) => value.includes(term));
-    });
-  }, [indicacoesSearch, indicacoesTabRows, indicacaoWhatsappById]);
+  const indicacoesTabRows = indicacoesTabQuery?.items ?? [];
+  const indicacoesTabTotalPages = Math.max(1, Math.ceil((indicacoesTabQuery?.total ?? 0) / INDICACOES_TAB_PAGE_SIZE));
 
   const { data: comissoesSummaryRpc } = useQuery({
     queryKey: ["comissoes-summary"],
     enabled: activeTab === "comissoes" || activeTab === "visao-geral",
+    refetchOnWindowFocus: true,
+    refetchInterval: 15000,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_comissoes_summary", { p_usuario_id: null });
+      const { data, error } = await supabase.rpc("get_comissoes_summary");
       if (error) throw error;
       const row = Array.isArray(data) ? data[0] : data;
       return {
@@ -346,11 +375,12 @@ function Dashboard() {
   const { data: comissoesFiltradasRpc = [] } = useQuery({
     queryKey: ["comissoes-filtradas", comissoesPeriodFilter, comissoesStatusFilter],
     enabled: activeTab === "comissoes",
+    refetchOnWindowFocus: true,
+    refetchInterval: 15000,
     queryFn: async () => {
       const { data, error } = await supabase.rpc("get_comissoes_filtradas", {
         p_period: comissoesPeriodFilter,
         p_status: comissoesStatusFilter,
-        p_usuario_id: null,
       });
       if (error) throw error;
       return (data ?? []) as Array<{
@@ -375,10 +405,19 @@ function Dashboard() {
   }, [comissoesPeriodFilter, comissoesStatusFilter]);
 
   useEffect(() => {
+    setIndicacoesTabPage(1);
+  }, [funnelFilter, customStartDate, customEndDate]);
+
+  useEffect(() => {
     if (comissoesPage > comissoesTotalPages) {
       setComissoesPage(comissoesTotalPages);
     }
   }, [comissoesPage, comissoesTotalPages]);
+  useEffect(() => {
+    if (indicacoesTabPage > indicacoesTabTotalPages) {
+      setIndicacoesTabPage(indicacoesTabTotalPages);
+    }
+  }, [indicacoesTabPage, indicacoesTabTotalPages]);
 
   const updateIndicacaoMutation = useMutation({
     mutationFn: async () => {
@@ -809,7 +848,7 @@ function Dashboard() {
           </div>
 
           <Section title="Indicações recentes" subtitle="Suas últimas 8 indicações">
-            <div className="max-[500px]:hidden overflow-x-auto -mx-6 lg:-mx-7 px-6 lg:px-7">
+            <div className="max-[700px]:hidden overflow-x-auto -mx-6 lg:-mx-7 px-6 lg:px-7">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground border-b border-border">
@@ -856,7 +895,7 @@ function Dashboard() {
               </table>
             </div>
 
-            <div className="hidden max-[500px]:grid gap-3">
+            <div className="hidden max-[700px]:grid gap-3">
               {indicacoes.slice(0, 8).map((i) => {
                 const isExpanded = expandedRecentIndicacaoId === i.id;
                 return (
@@ -1065,12 +1104,15 @@ function Dashboard() {
               <div className="mb-4">
                 <Input
                   value={indicacoesSearch}
-                  onChange={(e) => setIndicacoesSearch(e.target.value)}
+                  onChange={(e) => {
+                    setIndicacoesSearch(e.target.value);
+                    setIndicacoesTabPage(1);
+                  }}
                   placeholder="Buscar por nome, WhatsApp, tipo, status, valor potencial ou data"
                   className="h-10 rounded-lg"
                 />
               </div>
-              <div className="max-[500px]:hidden overflow-x-auto -mx-6 lg:-mx-7 px-6 lg:px-7">
+              <div className="max-[700px]:hidden overflow-x-auto -mx-6 lg:-mx-7 px-6 lg:px-7">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs text-muted-foreground border-b border-border">
@@ -1084,10 +1126,10 @@ function Dashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {filteredIndicacoesTabRows.map((i) => (
+                    {indicacoesTabRows.map((i) => (
                       <tr key={i.id}>
                         <td className="py-3.5 font-medium">{i.nome_indicado}</td>
-                        <td className="py-3.5 text-muted-foreground">{indicacaoWhatsappById.get(Number(i.id)) || "-"}</td>
+                        <td className="py-3.5 text-muted-foreground">{i.whatsapp || "-"}</td>
                         <td className="py-3.5 text-muted-foreground">{mapTipoDbToUi(i.tipo)}</td>
                         <td className="py-3.5">
                           <StatusBadge status={dbStatusToUi(i.status)} />
@@ -1109,8 +1151,8 @@ function Dashboard() {
                 </table>
               </div>
 
-              <div className="hidden max-[500px]:grid gap-3">
-                {filteredIndicacoesTabRows.map((i) => {
+              <div className="hidden max-[700px]:grid gap-3">
+                {indicacoesTabRows.map((i) => {
                   const isExpanded = expandedMyIndicacaoId === i.id;
                   return (
                     <div key={i.id} className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
@@ -1146,12 +1188,23 @@ function Dashboard() {
                     </div>
                   );
                 })}
-                {!loadingInd && filteredIndicacoesTabRows.length === 0 && (
+                {!loadingIndicacoesTab && indicacoesTabRows.length === 0 && (
                   <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-600">
                     Você ainda não tem indicações nessa visualização.
                   </div>
                 )}
               </div>
+              {(indicacoesTabQuery?.total ?? 0) > 0 && (
+                <div className="mt-4 flex items-center justify-between">
+                  <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => setIndicacoesTabPage((p) => Math.max(1, p - 1))} disabled={indicacoesTabPage === 1}>
+                    Anterior
+                  </Button>
+                  <p className="text-sm font-medium text-zinc-700">{indicacoesTabPage}/{indicacoesTabTotalPages}</p>
+                  <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => setIndicacoesTabPage((p) => Math.min(indicacoesTabTotalPages, p + 1))} disabled={indicacoesTabPage === indicacoesTabTotalPages}>
+                    Próxima
+                  </Button>
+                </div>
+              )}
               </Section>
             </>
           )}
@@ -1229,7 +1282,7 @@ function Dashboard() {
                   </div>
                 </div>
 
-                <div className="max-[550px]:hidden overflow-x-auto">
+                <div className="max-[700px]:hidden overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-left text-zinc-800 border-b border-zinc-200">
@@ -1255,23 +1308,23 @@ function Dashboard() {
                           <td className="py-3 px-4 md:px-5">
                             <span
                               className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
-                                c.status === "pago"
+                                normalizeComissaoStatus(c.status) === "pago"
                                   ? "bg-emerald-100 text-emerald-700"
-                                  : c.status === "pendente"
+                                  : normalizeComissaoStatus(c.status) === "pendente"
                                     ? "bg-amber-100 text-amber-700"
                                     : "bg-blue-100 text-blue-700"
                               }`}
                             >
                               <span
                                 className={`mr-1.5 h-2 w-2 rounded-full ${
-                                  c.status === "pago"
+                                  normalizeComissaoStatus(c.status) === "pago"
                                     ? "bg-emerald-500"
-                                    : c.status === "pendente"
+                                    : normalizeComissaoStatus(c.status) === "pendente"
                                       ? "bg-amber-500"
                                       : "bg-blue-500"
                                 }`}
                               />
-                              {c.status === "pago" ? "Pago" : c.status === "pendente" ? "Pendente" : "Disponível"}
+                              {normalizeComissaoStatus(c.status) === "pago" ? "Pago" : "Pendente"}
                             </span>
                           </td>
                         </tr>
@@ -1288,28 +1341,28 @@ function Dashboard() {
                   </table>
                 </div>
 
-                <div className="hidden max-[550px]:grid gap-3 p-4">
+                <div className="hidden max-[700px]:grid gap-3 p-4">
                   {comissoesPaginadas.map((c) => {
                     const isExpanded = expandedComissaoId === c.id;
-                    const statusLabel = c.status === "pago" ? "Pago" : c.status === "pendente" ? "Pendente" : "Disponível";
+                    const statusLabel = normalizeComissaoStatus(c.status) === "pago" ? "Pago" : "Pendente";
                     return (
                       <div key={c.id} className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
                         <div className="flex items-center justify-between gap-3">
                           <p className="font-semibold text-zinc-900">{c.nome_indicado || `Comissão #${c.id}`}</p>
                           <span
                             className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
-                              c.status === "pago"
+                              normalizeComissaoStatus(c.status) === "pago"
                                 ? "bg-emerald-100 text-emerald-700"
-                                : c.status === "pendente"
+                                : normalizeComissaoStatus(c.status) === "pendente"
                                   ? "bg-amber-100 text-amber-700"
                                   : "bg-blue-100 text-blue-700"
                             }`}
                           >
                             <span
                               className={`mr-1.5 h-2 w-2 rounded-full ${
-                                c.status === "pago"
+                                normalizeComissaoStatus(c.status) === "pago"
                                   ? "bg-emerald-500"
-                                  : c.status === "pendente"
+                                  : normalizeComissaoStatus(c.status) === "pendente"
                                     ? "bg-amber-500"
                                     : "bg-blue-500"
                               }`}
@@ -1660,6 +1713,9 @@ function SimpleLineChart({ data }: { data: { m: string; v: number }[] }) {
             {points.map((p, i) => (
               <g key={i}>
                 <circle cx={p[0]} cy={p[1]} r={4} fill="var(--card)" stroke="var(--primary)" strokeWidth={2} />
+                <text x={p[0]} y={p[1] - 8} textAnchor="middle" fontSize="9" fill="var(--primary-dark)">
+                  {Math.round(data[i].v).toLocaleString("pt-BR")}
+                </text>
                 <text x={p[0]} y={h - 6} textAnchor="middle" fontSize="10" fill="var(--muted-foreground)">
                   {data[i].m}
                 </text>
@@ -1793,7 +1849,7 @@ function NovaIndicacaoModal({
 
   return (
     <div className="fixed inset-0 z-50 grid items-start sm:items-center place-items-center overflow-y-auto bg-foreground/40 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="w-full max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto bg-card rounded-2xl shadow-card-hover border border-border p-6">
+      <div className="w-full max-w-md max-h-[calc(100vh-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto bg-card rounded-2xl shadow-card-hover border border-border p-6">
         <div className="flex items-start justify-between mb-5">
           <div>
             <h3 className="text-xl font-bold">Nova indicação</h3>
@@ -1834,6 +1890,7 @@ function NovaIndicacaoModal({
               id="m-nome"
               required
               value={form.nome}
+              placeholder="Aqui vai o nome do cliente"
               onChange={(e) => setForm({ ...form, nome: e.target.value })}
               className="mt-1.5 rounded-[10px] h-11"
             />
@@ -1958,7 +2015,7 @@ function NovaIndicacaoModal({
               value={form.observacoes}
               onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
               placeholder="Descreva detalhes úteis do cliente (consumo, urgência, orçamento, perfil do imóvel ou negócio). Quanto mais contexto, maior a chance de fechamento."
-              className="mt-1.5 min-h-[92px] rounded-[10px]"
+              className="mt-1.5 min-h-[140px] resize-none rounded-[10px]"
             />
           </div>
           <Button
@@ -2047,7 +2104,7 @@ function EditIndicacaoModal({
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-      <div className="w-full max-w-md max-h-[calc(100vh-2rem)] overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-5 shadow-lg">
+      <div className="w-full max-w-md max-h-[calc(100vh-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-5 shadow-lg">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold text-zinc-900">Editar indicação</h3>
           <button
@@ -2162,4 +2219,13 @@ function EditIndicacaoModal({
       )}
     </div>
   );
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
 }

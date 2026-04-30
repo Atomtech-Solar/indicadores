@@ -16,6 +16,8 @@ import {
   PiggyBank,
   ImageIcon,
   MoreVertical,
+  Menu,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { RequireAdmin } from "@/components/auth/RequireAdmin";
@@ -41,11 +43,14 @@ function AdminRouteComponent() {
   const [commissionValue, setCommissionValue] = useState("");
   const [projetoValue, setProjetoValue] = useState("");
   const [fotosSearch, setFotosSearch] = useState("");
+  const [fotosPage, setFotosPage] = useState(1);
+  const [overviewComissoesPage, setOverviewComissoesPage] = useState(1);
   const [comissoesDefinicaoSearch, setComissoesDefinicaoSearch] = useState("");
   const [comissoesDefinicaoPage, setComissoesDefinicaoPage] = useState(1);
   const [comissoesHistoricoSearch, setComissoesHistoricoSearch] = useState("");
   const [comissoesHistoricoPage, setComissoesHistoricoPage] = useState(1);
   const [usuariosSearch, setUsuariosSearch] = useState("");
+  const [usuariosPage, setUsuariosPage] = useState(1);
   const [actionUserModal, setActionUserModal] = useState<{
     usuario_id: string;
     nome: string;
@@ -53,18 +58,35 @@ function AdminRouteComponent() {
     is_disabled: boolean;
   } | null>(null);
   const [indicacoesSearch, setIndicacoesSearch] = useState("");
+  const [indicacoesPage, setIndicacoesPage] = useState(1);
   const [actionIndicacaoModal, setActionIndicacaoModal] = useState<{
     id: number;
     nome_indicado: string;
     status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido";
   } | null>(null);
   const [zoomedFotoUrl, setZoomedFotoUrl] = useState<string | null>(null);
+  const [showSidebarMenu, setShowSidebarMenu] = useState(false);
+  const [avaliacaoModal, setAvaliacaoModal] = useState<{
+    id: number;
+    usuario_nome: string;
+    nome_indicado: string;
+    whatsapp: string | null;
+    tipo_projeto: string | null;
+    observacoes: string | null;
+    created_at: string;
+  } | null>(null);
   const shouldLoadOverview = activeTab === "overview";
   const shouldLoadUsuarios = activeTab === "usuarios";
   const shouldLoadFotos = activeTab === "fotos";
   const shouldLoadIndicacoes = activeTab === "indicacoes" || activeTab === "comissoes";
   const shouldLoadComissoes = activeTab === "comissoes";
   const shouldLoadReports = activeTab === "relatorios";
+  const usuariosSearchDebounced = useDebouncedValue(usuariosSearch, 500);
+  const indicacoesSearchDebounced = useDebouncedValue(indicacoesSearch, 500);
+  const fotosSearchDebounced = useDebouncedValue(fotosSearch, 500);
+  const comissoesDefinicaoSearchDebounced = useDebouncedValue(comissoesDefinicaoSearch, 500);
+  const comissoesHistoricoSearchDebounced = useDebouncedValue(comissoesHistoricoSearch, 500);
+  const PAGE_SIZE = 10;
   const formatTipoProjeto = (value: string | null) => {
     if (!value?.trim()) return "Não informada";
     const labels = value
@@ -77,6 +99,11 @@ function AdminRouteComponent() {
         return item;
       });
     return labels.length ? labels.join(" • ") : "Não informada";
+  };
+  const whatsappHref = (value: string | null) => {
+    const digits = (value ?? "").replace(/\D/g, "");
+    if (!digits) return null;
+    return `https://wa.me/${digits}`;
   };
 
   const { data: overview, isLoading: loadingOverview } = useQuery({
@@ -106,14 +133,14 @@ function AdminRouteComponent() {
       }>({ action: "overview" }),
   });
 
-  const { data: usuarios = [], isLoading: loadingUsuarios } = useQuery({
-    queryKey: ["admin-usuarios"],
+  const { data: usuariosResp, isLoading: loadingUsuarios } = useQuery({
+    queryKey: ["admin-usuarios", usuariosPage, usuariosSearchDebounced],
     enabled: shouldLoadUsuarios,
     retry: false,
     refetchOnWindowFocus: false,
     queryFn: () =>
-      callAdminOps<
-        {
+      callAdminOps<{
+        items: {
           id: number;
           usuario_id: string;
           nome: string;
@@ -122,18 +149,21 @@ function AdminRouteComponent() {
           role: "indicador" | "admin";
           created_at: string;
           is_disabled: boolean;
-        }[]
-      >({ action: "list_users" }),
+        }[];
+        total: number;
+        page: number;
+        limit: number;
+      }>({ action: "list_users", page: usuariosPage, limit: PAGE_SIZE, search: usuariosSearchDebounced }),
   });
 
-  const { data: fotos = [], isLoading: loadingFotos } = useQuery({
-    queryKey: ["admin-fotos"],
+  const { data: fotosResp, isLoading: loadingFotos } = useQuery({
+    queryKey: ["admin-fotos", fotosPage, fotosSearchDebounced],
     enabled: shouldLoadFotos,
     retry: false,
     refetchOnWindowFocus: false,
     queryFn: () =>
-      callAdminOps<
-        {
+      callAdminOps<{
+        items: {
           id: number;
           usuario_nome: string;
           nome_indicado: string;
@@ -143,18 +173,21 @@ function AdminRouteComponent() {
           conta_energia_url: string | null;
           foto_padrao_url: string | null;
           created_at: string;
-        }[]
-      >({ action: "list_fotos" }),
+        }[];
+        total: number;
+        page: number;
+        limit: number;
+      }>({ action: "list_fotos", page: fotosPage, limit: PAGE_SIZE, search: fotosSearchDebounced }),
   });
 
-  const { data: indicacoes = [], isLoading: loadingIndicacoes } = useQuery({
-    queryKey: ["admin-indicacoes"],
+  const { data: indicacoesResp, isLoading: loadingIndicacoes } = useQuery({
+    queryKey: ["admin-indicacoes", indicacoesPage, indicacoesSearchDebounced],
     enabled: shouldLoadIndicacoes,
     retry: false,
     refetchOnWindowFocus: false,
     queryFn: () =>
-      callAdminOps<
-        {
+      callAdminOps<{
+        items: {
           id: number;
           usuario_id: number;
           usuario_nome: string;
@@ -165,27 +198,80 @@ function AdminRouteComponent() {
           valor_projeto: number | null;
           created_at: string;
           updated_at: string;
-        }[]
-      >({ action: "list_indicacoes" }),
+        }[];
+        total: number;
+        page: number;
+        limit: number;
+      }>({ action: "list_indicacoes", page: indicacoesPage, limit: PAGE_SIZE, search: indicacoesSearchDebounced }),
   });
 
-  const { data: comissoes = [], isLoading: loadingComissoes } = useQuery({
-    queryKey: ["admin-comissoes"],
+  const { data: comissoesResp, isLoading: loadingComissoes } = useQuery({
+    queryKey: ["admin-comissoes", comissoesHistoricoPage, comissoesHistoricoSearchDebounced],
     enabled: shouldLoadComissoes,
     retry: false,
     refetchOnWindowFocus: false,
     queryFn: () =>
-      callAdminOps<
-        {
+      callAdminOps<{
+        items: {
           id: number;
           usuario_nome: string;
           indicacao_nome: string;
           valor: number;
           status: "pendente" | "disponivel" | "pago" | "cancelado";
           created_at: string;
-        }[]
-      >({ action: "list_comissoes" }),
+        }[];
+        total: number;
+        page: number;
+        limit: number;
+      }>({ action: "list_comissoes", page: comissoesHistoricoPage, limit: PAGE_SIZE, search: comissoesHistoricoSearchDebounced }),
   });
+  const { data: indicacoesElegiveisResp, isLoading: loadingIndicacoesElegiveis } = useQuery({
+    queryKey: ["admin-indicacoes-elegiveis", comissoesDefinicaoPage, comissoesDefinicaoSearchDebounced],
+    enabled: shouldLoadComissoes,
+    retry: false,
+    refetchOnWindowFocus: false,
+    queryFn: () =>
+      callAdminOps<{
+        items: {
+          id: number;
+          usuario_id: number;
+          usuario_nome: string;
+          nome_indicado: string;
+          tipo: string;
+          status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido";
+          valor_potencial: number | null;
+          valor_projeto: number | null;
+          created_at: string;
+          updated_at: string;
+        }[];
+        total: number;
+        page: number;
+        limit: number;
+      }>({
+        action: "list_indicacoes",
+        page: comissoesDefinicaoPage,
+        limit: PAGE_SIZE,
+        search: comissoesDefinicaoSearchDebounced,
+        onlyCommissionEligible: true,
+      }),
+  });
+
+  const usuarios = usuariosResp?.items ?? [];
+  const indicacoes = indicacoesResp?.items ?? [];
+  const fotos = fotosResp?.items ?? [];
+  const comissoes = comissoesResp?.items ?? [];
+  const indicacoesElegiveisComissaoPaginadas = indicacoesElegiveisResp?.items ?? [];
+  const comissoesHistoricoPaginadas = comissoes;
+  const usuariosTotalPages = Math.max(1, Math.ceil((usuariosResp?.total ?? 0) / PAGE_SIZE));
+  const indicacoesTotalPages = Math.max(1, Math.ceil((indicacoesResp?.total ?? 0) / PAGE_SIZE));
+  const fotosTotalPages = Math.max(1, Math.ceil((fotosResp?.total ?? 0) / PAGE_SIZE));
+  const comissoesDefinicaoTotalPages = Math.max(1, Math.ceil((indicacoesElegiveisResp?.total ?? 0) / PAGE_SIZE));
+  const comissoesHistoricoTotalPages = Math.max(1, Math.ceil((comissoesResp?.total ?? 0) / PAGE_SIZE));
+  const overviewComissoesTotalPages = Math.max(1, Math.ceil((overview?.comissoesPagasLista?.length ?? 0) / 10));
+  const overviewComissoesPaginadas = useMemo(() => {
+    const start = (overviewComissoesPage - 1) * 10;
+    return (overview?.comissoesPagasLista ?? []).slice(start, start + 10);
+  }, [overview?.comissoesPagasLista, overviewComissoesPage]);
 
   const { data: reports, isLoading: loadingReports } = useQuery({
     queryKey: ["admin-reports"],
@@ -203,7 +289,7 @@ function AdminRouteComponent() {
   const promoteMutation = useMutation({
     mutationFn: (userId: string) => callAdminOpsMutation({ action: "set_user_role", userId, role: "admin" }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"], exact: true });
+      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"] });
       if (shouldLoadOverview) {
         await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
       }
@@ -215,7 +301,7 @@ function AdminRouteComponent() {
   const revokeAdminMutation = useMutation({
     mutationFn: (userId: string) => callAdminOpsMutation({ action: "set_user_role", userId, role: "indicador" }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"], exact: true });
+      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"] });
       if (shouldLoadOverview) {
         await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
       }
@@ -227,7 +313,7 @@ function AdminRouteComponent() {
   const disableMutation = useMutation({
     mutationFn: (userId: string) => callAdminOpsMutation({ action: "disable_user", userId }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"], exact: true });
+      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"] });
       toast.success("Usuário desativado com sucesso.");
     },
     onError: () => toast.error("Não foi possível desativar o usuário."),
@@ -236,7 +322,7 @@ function AdminRouteComponent() {
   const reactivateMutation = useMutation({
     mutationFn: (userId: string) => callAdminOpsMutation({ action: "reactivate_user", userId }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"], exact: true });
+      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"] });
       toast.success("Usuário reativado com sucesso.");
     },
     onError: () => toast.error("Não foi possível reativar o usuário."),
@@ -246,7 +332,7 @@ function AdminRouteComponent() {
     mutationFn: ({ indicacaoId, status }: { indicacaoId: number; status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido" }) =>
       callAdminOpsMutation({ action: "update_indicacao_status", indicacaoId, status }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"], exact: true });
+      await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"] });
       if (shouldLoadOverview) {
         await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
       }
@@ -259,7 +345,7 @@ function AdminRouteComponent() {
     mutationFn: ({ comissaoId, status }: { comissaoId: number; status: "pendente" | "disponivel" | "pago" | "cancelado" }) =>
       callAdminOpsMutation({ action: "update_comissao_status", comissaoId, status }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-comissoes"], exact: true });
+      await queryClient.invalidateQueries({ queryKey: ["admin-comissoes"] });
       if (shouldLoadOverview) {
         await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
       }
@@ -286,8 +372,8 @@ function AdminRouteComponent() {
       });
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-comissoes"], exact: true });
-      await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"], exact: true });
+      await queryClient.invalidateQueries({ queryKey: ["admin-comissoes"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"] });
       if (shouldLoadOverview) {
         await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
       }
@@ -314,134 +400,39 @@ function AdminRouteComponent() {
     () => [
       { key: "overview", label: "Overview", icon: LayoutDashboard },
       { key: "usuarios", label: "Usuários", icon: Users },
-      { key: "indicacoes", label: "Indicações", icon: TrendingUp },
+      { key: "fotos", label: "Avaliações", icon: ImageIcon },
+      { key: "indicacoes", label: "Status", icon: TrendingUp },
       { key: "comissoes", label: "Comissões", icon: Wallet },
-      { key: "fotos", label: "Fotos", icon: ImageIcon },
       { key: "relatorios", label: "Relatórios", icon: BarChart3 },
       { key: "configuracoes", label: "Configurações", icon: Settings },
     ] as const,
     [],
   );
 
-  const filteredUsuarios = useMemo(() => {
-    const term = usuariosSearch.trim().toLowerCase();
-    return usuarios.filter((u) => {
-      if (!term) return true;
-
-      const searchable = [
-        u.nome,
-        u.email,
-        u.whatsapp,
-        u.role,
-        formatDate(u.created_at),
-        u.is_disabled ? "desativado" : "ativo",
-      ]
-        .join(" ")
-        .toLowerCase();
-
-      return searchable.includes(term);
-    });
-  }, [usuarios, usuariosSearch]);
-
-  const filteredIndicacoes = useMemo(() => {
-    const term = indicacoesSearch.trim().toLowerCase();
-    return indicacoes.filter((i) => {
-      if (!term) return true;
-      const searchable = [
-        i.usuario_nome,
-        i.nome_indicado,
-        i.tipo,
-        i.status,
-        i.valor_potencial == null ? "sem valor" : formatBRL(Number(i.valor_potencial)),
-        i.valor_projeto == null ? "sem projeto" : formatBRL(Number(i.valor_projeto)),
-        formatDate(i.created_at),
-      ]
-        .join(" ")
-        .toLowerCase();
-      return searchable.includes(term);
-    });
-  }, [indicacoes, indicacoesSearch]);
-
-  const filteredFotos = useMemo(() => {
-    const term = fotosSearch.trim().toLowerCase();
-    if (!term) return fotos;
-    return fotos.filter((f) => {
-      const tipoProjetoLabel = formatTipoProjeto(f.tipo_projeto).toLowerCase();
-      const searchable = [
-        f.usuario_nome,
-        f.nome_indicado,
-        f.whatsapp ?? "",
-        tipoProjetoLabel,
-        f.observacoes ?? "",
-        formatDate(f.created_at),
-      ]
-        .join(" ")
-        .toLowerCase();
-      return searchable.includes(term);
-    });
-  }, [fotos, fotosSearch]);
-
   const formatIndicacaoStatusLabel = (status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido") => {
     if (status === "enviado") return "recebido";
     return status;
   };
-
-  const indicacoesElegiveisComissao = useMemo(
-    () => indicacoes.filter((i) => i.status === "negociacao" || i.status === "fechado"),
-    [indicacoes],
-  );
-
-  const filteredIndicacoesElegiveisComissao = useMemo(() => {
-    const term = comissoesDefinicaoSearch.trim().toLowerCase();
-    if (!term) return indicacoesElegiveisComissao;
-    return indicacoesElegiveisComissao.filter((i) => {
-      const searchable = [
-        i.usuario_nome,
-        i.nome_indicado,
-        i.tipo,
-        i.status,
-        i.valor_potencial == null ? "ainda não definido" : formatBRL(Number(i.valor_potencial)),
-        formatDate(i.created_at),
-      ]
-        .join(" ")
-        .toLowerCase();
-      return searchable.includes(term);
-    });
-  }, [indicacoesElegiveisComissao, comissoesDefinicaoSearch]);
-
-  const comissoesDefinicaoTotalPages = Math.max(1, Math.ceil(filteredIndicacoesElegiveisComissao.length / 10));
-  const comissoesDefinicaoPageSafe = Math.min(comissoesDefinicaoPage, comissoesDefinicaoTotalPages);
-  const indicacoesElegiveisComissaoPaginadas = useMemo(() => {
-    const start = (comissoesDefinicaoPageSafe - 1) * 10;
-    return filteredIndicacoesElegiveisComissao.slice(start, start + 10);
-  }, [filteredIndicacoesElegiveisComissao, comissoesDefinicaoPageSafe]);
-
-  const filteredComissoesHistorico = useMemo(() => {
-    const term = comissoesHistoricoSearch.trim().toLowerCase();
-    if (!term) return comissoes;
-    return comissoes.filter((c) => {
-      const searchable = [c.usuario_nome, c.indicacao_nome, c.status, formatBRL(Number(c.valor)), formatDate(c.created_at)]
-        .join(" ")
-        .toLowerCase();
-      return searchable.includes(term);
-    });
-  }, [comissoes, comissoesHistoricoSearch]);
-
-  const comissoesHistoricoTotalPages = Math.max(1, Math.ceil(filteredComissoesHistorico.length / 10));
-  const comissoesHistoricoPageSafe = Math.min(comissoesHistoricoPage, comissoesHistoricoTotalPages);
-  const comissoesHistoricoPaginadas = useMemo(() => {
-    const start = (comissoesHistoricoPageSafe - 1) * 10;
-    return filteredComissoesHistorico.slice(start, start + 10);
-  }, [filteredComissoesHistorico, comissoesHistoricoPageSafe]);
-
   useEffect(() => {
+    if (usuariosPage > usuariosTotalPages) setUsuariosPage(usuariosTotalPages);
+    if (indicacoesPage > indicacoesTotalPages) setIndicacoesPage(indicacoesTotalPages);
+    if (fotosPage > fotosTotalPages) setFotosPage(fotosTotalPages);
     if (comissoesDefinicaoPage > comissoesDefinicaoTotalPages) setComissoesDefinicaoPage(comissoesDefinicaoTotalPages);
     if (comissoesHistoricoPage > comissoesHistoricoTotalPages) setComissoesHistoricoPage(comissoesHistoricoTotalPages);
+    if (overviewComissoesPage > overviewComissoesTotalPages) setOverviewComissoesPage(overviewComissoesTotalPages);
   }, [
+    usuariosPage,
+    usuariosTotalPages,
+    indicacoesPage,
+    indicacoesTotalPages,
+    fotosPage,
+    fotosTotalPages,
     comissoesDefinicaoPage,
     comissoesDefinicaoTotalPages,
     comissoesHistoricoPage,
     comissoesHistoricoTotalPages,
+    overviewComissoesPage,
+    overviewComissoesTotalPages,
   ]);
 
   return (
@@ -474,11 +465,75 @@ function AdminRouteComponent() {
           </nav>
         </aside>
 
+        <div
+          className={`lg:hidden fixed inset-0 z-40 transition-all duration-300 ${
+            showSidebarMenu ? "pointer-events-auto" : "pointer-events-none"
+          }`}
+        >
+          <button
+            type="button"
+            aria-label="Fechar menu lateral"
+            className={`absolute inset-0 bg-black/35 transition-opacity duration-300 ${
+              showSidebarMenu ? "opacity-100" : "opacity-0"
+            }`}
+            onClick={() => setShowSidebarMenu(false)}
+          />
+          <aside
+            className={`absolute left-0 top-0 h-full w-[84vw] max-w-xs bg-[#024b2e] border-r border-[#04653f] shadow-2xl transition-transform duration-300 ${
+              showSidebarMenu ? "translate-x-0" : "-translate-x-full"
+            }`}
+          >
+            <div className="h-16 px-4 border-b border-[#04653f] flex items-center justify-between">
+              <img
+                src="https://i.ibb.co/pv36YBgf/Ativo-3.png"
+                alt="ATOM TECH"
+                className="h-10 w-auto object-contain"
+              />
+              <button
+                type="button"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-white/25 text-white"
+                onClick={() => setShowSidebarMenu(false)}
+                aria-label="Fechar menu"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <nav className="px-3 py-5 space-y-1">
+              {menuItems.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(item.key);
+                    setShowSidebarMenu(false);
+                  }}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition ${
+                    activeTab === item.key ? "bg-[#23a548] text-white" : "text-white/90 hover:bg-[#0b6a42] hover:text-white"
+                  }`}
+                >
+                  <item.icon className="h-[18px] w-[18px]" />
+                  {item.label}
+                </button>
+              ))}
+            </nav>
+          </aside>
+        </div>
+
         <main className="flex-1 min-w-0 bg-white">
           <header className="bg-card border-b border-border px-6 lg:px-10 py-4 flex items-center justify-between sticky top-0 z-20">
-            <div>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                className="lg:hidden inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border text-foreground transition hover:bg-muted"
+                onClick={() => setShowSidebarMenu(true)}
+                aria-label="Abrir menu lateral"
+              >
+                <Menu className="h-5 w-5" />
+              </button>
+              <div>
               <p className="text-xs text-muted-foreground">Painel administrativo</p>
               <h1 className="text-lg font-semibold">Administração ATOM TECH</h1>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <button type="button" className="relative h-10 w-10 rounded-xl border border-border hover:bg-muted grid place-items-center transition">
@@ -537,7 +592,7 @@ function AdminRouteComponent() {
                       Total: {formatBRL(overview?.metrics?.totalComissoesPagas ?? 0)}
                     </p>
                   </div>
-                  <div className="overflow-x-auto">
+                  <div className="max-[700px]:hidden overflow-x-auto">
                     <table className="w-full text-sm min-w-[640px]">
                       <thead>
                         <tr className="text-left border-b border-zinc-200 bg-zinc-50">
@@ -563,7 +618,7 @@ function AdminRouteComponent() {
                           </tr>
                         )}
                         {!loadingOverview &&
-                          (overview?.comissoesPagasLista ?? []).map((c) => (
+                          overviewComissoesPaginadas.map((c) => (
                             <tr key={c.id}>
                               <td className="px-5 py-3 font-medium text-zinc-900">{c.usuario_nome}</td>
                               <td className="px-5 py-3 text-zinc-700">{c.indicacao_nome}</td>
@@ -574,6 +629,54 @@ function AdminRouteComponent() {
                       </tbody>
                     </table>
                   </div>
+                  <div className="hidden max-[700px]:grid gap-3 p-4">
+                    {loadingOverview && (
+                      <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+                        Carregando comissões...
+                      </div>
+                    )}
+                    {!loadingOverview && overviewComissoesPaginadas.length === 0 && (
+                      <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+                        Nenhuma comissão com status pago ainda.
+                      </div>
+                    )}
+                    {!loadingOverview &&
+                      overviewComissoesPaginadas.map((c) => (
+                        <div key={`mob-cp-${c.id}`} className="rounded-xl border border-zinc-200 bg-white p-4">
+                          <p className="text-sm font-semibold text-zinc-900">{c.usuario_nome}</p>
+                          <p className="mt-1 text-sm text-zinc-700">{c.indicacao_nome}</p>
+                          <div className="mt-2 flex items-center justify-between">
+                            <p className="text-sm font-semibold text-emerald-700">{formatBRL(c.valor)}</p>
+                            <p className="text-xs text-zinc-600">{formatDate(c.data_pagamento)}</p>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                  {(overview?.comissoesPagasLista?.length ?? 0) > 0 && (
+                    <div className="flex items-center justify-between border-t border-zinc-200 px-5 py-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-8 px-3 text-xs"
+                        onClick={() => setOverviewComissoesPage((p) => Math.max(1, p - 1))}
+                        disabled={overviewComissoesPage === 1}
+                      >
+                        Anterior
+                      </Button>
+                      <p className="text-sm font-medium text-zinc-700">
+                        {overviewComissoesPage}/{overviewComissoesTotalPages}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-8 px-3 text-xs"
+                        onClick={() => setOverviewComissoesPage((p) => Math.min(overviewComissoesTotalPages, p + 1))}
+                        disabled={overviewComissoesPage === overviewComissoesTotalPages}
+                      >
+                        Próxima
+                      </Button>
+                    </div>
+                  )}
                 </section>
 
                 <div className="grid lg:grid-cols-[2fr_1fr] gap-5">
@@ -621,13 +724,16 @@ function AdminRouteComponent() {
                   <div className="mt-3">
                     <Input
                       value={usuariosSearch}
-                      onChange={(e) => setUsuariosSearch(e.target.value)}
+                      onChange={(e) => {
+                        setUsuariosSearch(e.target.value);
+                        setUsuariosPage(1);
+                      }}
                       placeholder='Buscar por nome, e-mail, WhatsApp, role/status ou data (ex.: "admin", "desativado", "ativo", "12/04/2026")'
                       className="h-10"
                     />
                   </div>
                 </div>
-                <div className="overflow-x-auto">
+                <div className="max-[700px]:hidden overflow-x-auto">
                   <table className="w-full text-sm min-w-[900px]">
                     <thead>
                       <tr className="text-left border-b border-zinc-200">
@@ -641,12 +747,12 @@ function AdminRouteComponent() {
                     </thead>
                     <tbody className="divide-y divide-zinc-100">
                       {loadingUsuarios && <tr><td colSpan={6} className="px-5 py-6 text-center text-zinc-500">Carregando usuários...</td></tr>}
-                      {!loadingUsuarios && filteredUsuarios.length === 0 && (
+                      {!loadingUsuarios && usuarios.length === 0 && (
                         <tr>
                           <td colSpan={6} className="px-5 py-6 text-center text-zinc-500">Nenhum usuário encontrado para os filtros.</td>
                         </tr>
                       )}
-                      {filteredUsuarios.map((u) => (
+                      {usuarios.map((u) => (
                         <tr key={u.usuario_id} className={u.is_disabled ? "bg-rose-50/70" : undefined}>
                           <td className="px-5 py-3">{u.nome}</td>
                           <td className="px-5 py-3">{u.email}</td>
@@ -686,6 +792,65 @@ function AdminRouteComponent() {
                     </tbody>
                   </table>
                 </div>
+                <div className="hidden max-[700px]:grid gap-3 p-4">
+                  {loadingUsuarios && (
+                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+                      Carregando usuários...
+                    </div>
+                  )}
+                  {!loadingUsuarios && usuarios.length === 0 && (
+                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+                      Nenhum usuário encontrado para os filtros.
+                    </div>
+                  )}
+                  {!loadingUsuarios &&
+                    usuarios.map((u) => (
+                      <div key={`mob-user-${u.usuario_id}`} className={`rounded-xl border p-4 ${u.is_disabled ? "border-rose-200 bg-rose-50/50" : "border-zinc-200 bg-white"}`}>
+                        <p className="text-sm font-semibold text-zinc-900">{u.nome}</p>
+                        <p className="mt-1 text-xs text-zinc-600">{u.email}</p>
+                        <div className="mt-2 space-y-1 text-sm text-zinc-700">
+                          <p><span className="font-medium text-zinc-900">WhatsApp:</span> {u.whatsapp}</p>
+                          <p>
+                            <span className="font-medium text-zinc-900">Role:</span> {u.role}
+                            {u.is_disabled && (
+                              <span className="ml-2 inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                                desativado
+                              </span>
+                            )}
+                          </p>
+                          <p><span className="font-medium text-zinc-900">Data:</span> {formatDate(u.created_at)}</p>
+                        </div>
+                        <div className="mt-3 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setActionUserModal({
+                                usuario_id: u.usuario_id,
+                                nome: u.nome,
+                                role: u.role,
+                                is_disabled: u.is_disabled,
+                              })
+                            }
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                            aria-label="Abrir ações do usuário"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+                {(usuariosResp?.total ?? 0) > 0 && (
+                  <div className="flex items-center justify-between border-t border-zinc-200 px-5 py-3">
+                    <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => setUsuariosPage((p) => Math.max(1, p - 1))} disabled={usuariosPage === 1}>
+                      Anterior
+                    </Button>
+                    <p className="text-sm font-medium text-zinc-700">{usuariosPage}/{usuariosTotalPages}</p>
+                    <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => setUsuariosPage((p) => Math.min(usuariosTotalPages, p + 1))} disabled={usuariosPage === usuariosTotalPages}>
+                      Próxima
+                    </Button>
+                  </div>
+                )}
               </section>
             )}
 
@@ -696,13 +861,16 @@ function AdminRouteComponent() {
                   <div className="mt-3">
                     <Input
                       value={indicacoesSearch}
-                      onChange={(e) => setIndicacoesSearch(e.target.value)}
+                      onChange={(e) => {
+                        setIndicacoesSearch(e.target.value);
+                        setIndicacoesPage(1);
+                      }}
                       placeholder='Buscar por usuário, indicado, tipo, status, valores ou data (ex.: "fechado", "negociação")'
                       className="h-10"
                     />
                   </div>
                 </div>
-                <div className="overflow-x-auto">
+                <div className="max-[700px]:hidden overflow-x-auto">
                   <table className="w-full text-sm min-w-[980px]">
                     <thead>
                       <tr className="text-left border-b border-zinc-200">
@@ -724,14 +892,14 @@ function AdminRouteComponent() {
                           </td>
                         </tr>
                       )}
-                      {!loadingIndicacoes && filteredIndicacoes.length === 0 && (
+                      {!loadingIndicacoes && indicacoes.length === 0 && (
                         <tr>
                           <td colSpan={8} className="px-5 py-6 text-center text-zinc-500">
                             Nenhuma indicação encontrada para o filtro informado.
                           </td>
                         </tr>
                       )}
-                      {filteredIndicacoes.map((i) => (
+                      {indicacoes.map((i) => (
                         <tr key={i.id}>
                           <td className="px-5 py-3">{i.usuario_nome}</td>
                           <td className="px-5 py-3">{i.nome_indicado}</td>
@@ -765,6 +933,59 @@ function AdminRouteComponent() {
                     </tbody>
                   </table>
                 </div>
+                <div className="hidden max-[700px]:grid gap-3 p-4">
+                  {loadingIndicacoes && (
+                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+                      Carregando indicações...
+                    </div>
+                  )}
+                  {!loadingIndicacoes && indicacoes.length === 0 && (
+                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+                      Nenhuma indicação encontrada para o filtro informado.
+                    </div>
+                  )}
+                  {!loadingIndicacoes &&
+                    indicacoes.map((i) => (
+                      <div key={`mob-ind-${i.id}`} className="rounded-xl border border-zinc-200 bg-white p-4">
+                        <p className="text-sm font-semibold text-zinc-900">{i.nome_indicado}</p>
+                        <p className="mt-1 text-xs text-zinc-600">Usuário: {i.usuario_nome}</p>
+                        <div className="mt-2 space-y-1 text-sm text-zinc-700">
+                          <p><span className="font-medium text-zinc-900">Tipo:</span> {i.tipo}</p>
+                          <p><span className="font-medium text-zinc-900">Status:</span> {formatIndicacaoStatusLabel(i.status)}</p>
+                          <p><span className="font-medium text-zinc-900">Comissão (pot.):</span> {i.valor_potencial == null ? "—" : formatBRL(Number(i.valor_potencial))}</p>
+                          <p><span className="font-medium text-zinc-900">Projeto:</span> {i.valor_projeto == null ? "—" : formatBRL(Number(i.valor_projeto))}</p>
+                          <p><span className="font-medium text-zinc-900">Data:</span> {formatDate(i.created_at)}</p>
+                        </div>
+                        <div className="mt-3 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setActionIndicacaoModal({
+                                id: i.id,
+                                nome_indicado: i.nome_indicado,
+                                status: i.status,
+                              })
+                            }
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                            aria-label="Abrir ações da indicação"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+                {(indicacoesResp?.total ?? 0) > 0 && (
+                  <div className="flex items-center justify-between border-t border-zinc-200 px-5 py-3">
+                    <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => setIndicacoesPage((p) => Math.max(1, p - 1))} disabled={indicacoesPage === 1}>
+                      Anterior
+                    </Button>
+                    <p className="text-sm font-medium text-zinc-700">{indicacoesPage}/{indicacoesTotalPages}</p>
+                    <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => setIndicacoesPage((p) => Math.min(indicacoesTotalPages, p + 1))} disabled={indicacoesPage === indicacoesTotalPages}>
+                      Próxima
+                    </Button>
+                  </div>
+                )}
               </section>
             )}
 
@@ -786,7 +1007,7 @@ function AdminRouteComponent() {
                       />
                     </div>
                   </div>
-                  <div className="overflow-x-auto">
+                  <div className="max-[700px]:hidden overflow-x-auto">
                     <table className="w-full text-sm min-w-[900px]">
                       <thead>
                         <tr className="text-left border-b border-zinc-200">
@@ -798,7 +1019,7 @@ function AdminRouteComponent() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-100">
-                        {loadingIndicacoes && (
+                        {loadingIndicacoesElegiveis && (
                           <tr>
                             <td colSpan={5} className="px-5 py-6 text-center text-zinc-500">Carregando indicações...</td>
                           </tr>
@@ -832,26 +1053,52 @@ function AdminRouteComponent() {
                       </tbody>
                     </table>
                   </div>
-                  {filteredIndicacoesElegiveisComissao.length > 0 && (
+                  <div className="hidden max-[700px]:grid gap-3 p-4">
+                    {loadingIndicacoesElegiveis && (
+                      <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">Carregando indicações...</div>
+                    )}
+                    {!loadingIndicacoesElegiveis && indicacoesElegiveisComissaoPaginadas.length === 0 && (
+                      <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+                        Nenhuma indicação encontrada para o filtro informado.
+                      </div>
+                    )}
+                    {!loadingIndicacoesElegiveis &&
+                      indicacoesElegiveisComissaoPaginadas.map((i) => (
+                        <div key={`mob-neg-${i.id}`} className="rounded-xl border border-zinc-200 bg-white p-4">
+                          <p className="text-sm font-semibold text-zinc-900">{i.nome_indicado}</p>
+                          <p className="mt-1 text-xs text-zinc-600">Usuário: {i.usuario_nome}</p>
+                          <div className="mt-2 space-y-1 text-sm text-zinc-700">
+                            <p><span className="font-medium text-zinc-900">Tipo:</span> {i.tipo}</p>
+                            <p><span className="font-medium text-zinc-900">Valor potencial:</span> {i.valor_potencial == null ? "Ainda não definido" : formatBRL(Number(i.valor_potencial))}</p>
+                          </div>
+                          <div className="mt-3 flex justify-end">
+                            <Button size="sm" type="button" onClick={() => setCommissionModal({ indicacaoId: i.id, nomeIndicado: i.nome_indicado })}>
+                              Definir comissão
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                  {(indicacoesElegiveisResp?.total ?? 0) > 0 && (
                     <div className="flex items-center justify-between border-t border-zinc-200 px-5 py-3">
                       <Button
                         type="button"
                         variant="outline"
                         className="h-8 px-3 text-xs"
                         onClick={() => setComissoesDefinicaoPage((p) => Math.max(1, p - 1))}
-                        disabled={comissoesDefinicaoPageSafe === 1}
+                        disabled={comissoesDefinicaoPage === 1}
                       >
                         Anterior
                       </Button>
                       <p className="text-sm font-medium text-zinc-700">
-                        {comissoesDefinicaoPageSafe}/{comissoesDefinicaoTotalPages}
+                        {comissoesDefinicaoPage}/{comissoesDefinicaoTotalPages}
                       </p>
                       <Button
                         type="button"
                         variant="outline"
                         className="h-8 px-3 text-xs"
                         onClick={() => setComissoesDefinicaoPage((p) => Math.min(comissoesDefinicaoTotalPages, p + 1))}
-                        disabled={comissoesDefinicaoPageSafe === comissoesDefinicaoTotalPages}
+                        disabled={comissoesDefinicaoPage === comissoesDefinicaoTotalPages}
                       >
                         Próxima
                       </Button>
@@ -874,7 +1121,7 @@ function AdminRouteComponent() {
                       />
                     </div>
                   </div>
-                  <div className="overflow-x-auto">
+                  <div className="max-[700px]:hidden overflow-x-auto">
                     <table className="w-full text-sm min-w-[900px]">
                       <thead>
                         <tr className="text-left border-b border-zinc-200">
@@ -902,12 +1149,21 @@ function AdminRouteComponent() {
                             <td className="px-5 py-3">{c.status}</td>
                             <td className="px-5 py-3 text-right">
                               <div className="inline-flex gap-2">
-                                <Button size="sm" type="button" variant="secondary" onClick={() => updateComissaoMutation.mutate({ comissaoId: c.id, status: "disponivel" })}>
-                                  Disponível
-                                </Button>
-                                <Button size="sm" type="button" onClick={() => updateComissaoMutation.mutate({ comissaoId: c.id, status: "pago" })}>
-                                  Marcar pago
-                                </Button>
+                                {c.status === "pago" ? (
+                                  <Button
+                                    size="sm"
+                                    type="button"
+                                    variant="outline"
+                                    className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                                    onClick={() => updateComissaoMutation.mutate({ comissaoId: c.id, status: "pendente" })}
+                                  >
+                                    Desmarcar como pago
+                                  </Button>
+                                ) : (
+                                  <Button size="sm" type="button" onClick={() => updateComissaoMutation.mutate({ comissaoId: c.id, status: "pago" })}>
+                                    Marcar pago
+                                  </Button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -915,26 +1171,64 @@ function AdminRouteComponent() {
                       </tbody>
                     </table>
                   </div>
-                  {filteredComissoesHistorico.length > 0 && (
+                  <div className="hidden max-[700px]:grid gap-3 p-4">
+                    {loadingComissoes && (
+                      <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">Carregando comissões...</div>
+                    )}
+                    {!loadingComissoes && comissoesHistoricoPaginadas.length === 0 && (
+                      <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+                        Nenhuma comissão encontrada para o filtro informado.
+                      </div>
+                    )}
+                    {!loadingComissoes &&
+                      comissoesHistoricoPaginadas.map((c) => (
+                        <div key={`mob-com-${c.id}`} className="rounded-xl border border-zinc-200 bg-white p-4">
+                          <p className="text-sm font-semibold text-zinc-900">{c.indicacao_nome}</p>
+                          <p className="mt-1 text-xs text-zinc-600">Usuário: {c.usuario_nome}</p>
+                          <div className="mt-2 space-y-1 text-sm text-zinc-700">
+                            <p><span className="font-medium text-zinc-900">Valor:</span> {formatBRL(Number(c.valor))}</p>
+                            <p><span className="font-medium text-zinc-900">Status:</span> {c.status}</p>
+                          </div>
+                          <div className="mt-3 flex justify-end gap-2">
+                            {c.status === "pago" ? (
+                              <Button
+                                size="sm"
+                                type="button"
+                                variant="outline"
+                                className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                                onClick={() => updateComissaoMutation.mutate({ comissaoId: c.id, status: "pendente" })}
+                              >
+                                Desmarcar como pago
+                              </Button>
+                            ) : (
+                              <Button size="sm" type="button" onClick={() => updateComissaoMutation.mutate({ comissaoId: c.id, status: "pago" })}>
+                                Marcar pago
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                  {(comissoesResp?.total ?? 0) > 0 && (
                     <div className="flex items-center justify-between border-t border-zinc-200 px-5 py-3">
                       <Button
                         type="button"
                         variant="outline"
                         className="h-8 px-3 text-xs"
                         onClick={() => setComissoesHistoricoPage((p) => Math.max(1, p - 1))}
-                        disabled={comissoesHistoricoPageSafe === 1}
+                        disabled={comissoesHistoricoPage === 1}
                       >
                         Anterior
                       </Button>
                       <p className="text-sm font-medium text-zinc-700">
-                        {comissoesHistoricoPageSafe}/{comissoesHistoricoTotalPages}
+                        {comissoesHistoricoPage}/{comissoesHistoricoTotalPages}
                       </p>
                       <Button
                         type="button"
                         variant="outline"
                         className="h-8 px-3 text-xs"
                         onClick={() => setComissoesHistoricoPage((p) => Math.min(comissoesHistoricoTotalPages, p + 1))}
-                        disabled={comissoesHistoricoPageSafe === comissoesHistoricoTotalPages}
+                        disabled={comissoesHistoricoPage === comissoesHistoricoTotalPages}
                       >
                         Próxima
                       </Button>
@@ -954,7 +1248,10 @@ function AdminRouteComponent() {
                   <div className="mt-3">
                     <Input
                       value={fotosSearch}
-                      onChange={(e) => setFotosSearch(e.target.value)}
+                      onChange={(e) => {
+                        setFotosSearch(e.target.value);
+                        setFotosPage(1);
+                      }}
                       placeholder='Buscar por indicador, indicado, solução, observação ou data (ex.: "usina solar")'
                       className="h-10"
                     />
@@ -968,7 +1265,7 @@ function AdminRouteComponent() {
                     </div>
                   )}
                   {!loadingFotos &&
-                    filteredFotos.map((f) => (
+                    fotos.map((f) => (
                       <div key={f.id} className="rounded-2xl border border-zinc-200 bg-white p-4 md:p-5 shadow-sm">
                         <div className="mb-3">
                           <p className="text-sm text-zinc-600">Indicador</p>
@@ -1017,14 +1314,45 @@ function AdminRouteComponent() {
                             )}
                           </div>
                         </div>
+                        <div className="mt-3 flex justify-end">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-8 px-3 text-xs"
+                            onClick={() =>
+                              setAvaliacaoModal({
+                                id: f.id,
+                                usuario_nome: f.usuario_nome,
+                                nome_indicado: f.nome_indicado,
+                                whatsapp: f.whatsapp,
+                                tipo_projeto: f.tipo_projeto,
+                                observacoes: f.observacoes,
+                                created_at: f.created_at,
+                              })
+                            }
+                          >
+                            Ver mais
+                          </Button>
+                        </div>
                       </div>
                     ))}
-                  {!loadingFotos && filteredFotos.length === 0 && (
+                  {!loadingFotos && fotos.length === 0 && (
                     <div className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-500">
                       Nenhuma foto anexada encontrada para o filtro informado.
                     </div>
                   )}
                 </div>
+                {(fotosResp?.total ?? 0) > 0 && (
+                  <div className="flex items-center justify-between border border-zinc-200 rounded-2xl bg-white px-5 py-3">
+                    <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => setFotosPage((p) => Math.max(1, p - 1))} disabled={fotosPage === 1}>
+                      Anterior
+                    </Button>
+                    <p className="text-sm font-medium text-zinc-700">{fotosPage}/{fotosTotalPages}</p>
+                    <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => setFotosPage((p) => Math.min(fotosTotalPages, p + 1))} disabled={fotosPage === fotosTotalPages}>
+                      Próxima
+                    </Button>
+                  </div>
+                )}
               </section>
             )}
 
@@ -1274,6 +1602,40 @@ function AdminRouteComponent() {
           <img src={zoomedFotoUrl} alt="Foto ampliada" className="max-h-[90vh] max-w-[90vw] rounded-xl object-contain" />
         </button>
       )}
+
+      {avaliacaoModal && (
+        <div className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[1px] p-4 grid place-items-center">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5">
+            <h3 className="text-lg font-semibold text-zinc-900">Detalhes da avaliação</h3>
+            <div className="mt-3 space-y-2 text-sm text-zinc-700">
+              <p><span className="font-medium text-zinc-900">Indicador:</span> {avaliacaoModal.usuario_nome}</p>
+              <p><span className="font-medium text-zinc-900">Indicado:</span> {avaliacaoModal.nome_indicado}</p>
+              <p><span className="font-medium text-zinc-900">WhatsApp do indicado:</span> {avaliacaoModal.whatsapp?.trim() || "Não informado"}</p>
+              <p><span className="font-medium text-zinc-900">Solução:</span> {formatTipoProjeto(avaliacaoModal.tipo_projeto)}</p>
+              <p><span className="font-medium text-zinc-900">Observações:</span> {avaliacaoModal.observacoes?.trim() || "Sem observações."}</p>
+              <p><span className="font-medium text-zinc-900">Data:</span> {formatDate(avaliacaoModal.created_at)}</p>
+            </div>
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <Button type="button" variant="secondary" onClick={() => setAvaliacaoModal(null)}>
+                Fechar
+              </Button>
+              <Button
+                asChild
+                type="button"
+                disabled={!whatsappHref(avaliacaoModal.whatsapp)}
+              >
+                <a
+                  href={whatsappHref(avaliacaoModal.whatsapp) ?? "#"}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Chamar no WhatsApp
+                </a>
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </RequireAdmin>
   );
 }
@@ -1356,6 +1718,12 @@ function DualAdminLineChart({ data }: { data: { label: string; faturamento: numb
           <g key={`lbl-${p[0]}`}>
             <circle cx={p[0]} cy={p[1]} r={3} fill="#fff" stroke="#16a34a" strokeWidth={2} />
             <circle cx={pointsCom[i]![0]} cy={pointsCom[i]![1]} r={3} fill="#fff" stroke="#2563eb" strokeWidth={2} />
+            <text x={p[0]} y={p[1] - 8} textAnchor="middle" fontSize="9" fill="#15803d">
+              {Math.round(data[i]?.faturamento ?? 0).toLocaleString("pt-BR")}
+            </text>
+            <text x={pointsCom[i]![0]} y={pointsCom[i]![1] - 8} textAnchor="middle" fontSize="9" fill="#1d4ed8">
+              {Math.round(data[i]?.comissoesPagas ?? 0).toLocaleString("pt-BR")}
+            </text>
             <text x={p[0]} y={h - 6} textAnchor="middle" fontSize="10" fill="#52525b">
               {data[i]?.label ?? ""}
             </text>
@@ -1364,4 +1732,13 @@ function DualAdminLineChart({ data }: { data: { label: string; faturamento: numb
       </svg>
     </div>
   );
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
 }

@@ -165,6 +165,31 @@
     overflow-x: hidden;
   }
 
+  /* Scroll global: trilho claro e polegar verde */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #16a34a #dfe4ea;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: #dfe4ea;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: #16a34a;
+    border-radius: 9999px;
+    border: 2px solid #dfe4ea;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: #15803d;
+  }
+
   h1,
   h2,
   h3,
@@ -180,6 +205,16 @@
 }
 
 @layer utilities {
+  /* iOS Safari: usa viewport dinâmica quando disponível */
+  @supports (height: 100dvh) {
+    .min-h-screen {
+      min-height: 100dvh;
+    }
+    .h-screen {
+      height: 100dvh;
+    }
+  }
+
   .bg-gradient-hero {
     background: var(--gradient-hero);
   }
