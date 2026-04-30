@@ -393,6 +393,7 @@ function AdminRouteComponent() {
       toast.error("Não foi possível sair agora.");
       return;
     }
+    queryClient.clear();
     navigate({ to: "/login", replace: true });
   };
 

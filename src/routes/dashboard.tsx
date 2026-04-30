@@ -562,6 +562,7 @@ function Dashboard() {
     try {
       const { error } = await supabase.auth.signOut({ scope: "local" });
       if (error) throw error;
+      queryClient.clear();
       toast.success("Você saiu da conta.");
       setShowProfileMenu(false);
       navigate({ to: "/login", replace: true });

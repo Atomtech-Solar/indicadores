@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import type { Session, User } from "@supabase/supabase-js";
+import { toast } from "sonner";
 import { supabase } from "@/lib/supabase/client";
 import { queryClient } from "@/lib/query-client";
 
@@ -32,8 +33,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const roleFetchSeqRef = useRef(0);
   const lastUserIdRef = useRef<string | null>(null);
   const roleCacheRef = useRef<Map<string, "indicador" | "admin">>(new Map());
-  /** Recarga por atalho (F5 / Ctrl+R / Cmd+R): não limpa sessão no pagehide. Botão do browser ainda pode encerrar sessão. */
-  const reloadViaKeyboardRef = useRef(false);
+  const inactivityTimerRef = useRef<number | null>(null);
+  const inactivityWarningTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -114,7 +115,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (!nextId) {
         setRole(null);
+        roleCacheRef.current.clear();
         setAuthReady(true);
+        queryClient.clear();
         void queryClient.invalidateQueries({ queryKey: ["auth"] });
         void queryClient.invalidateQueries({ queryKey: ["usuario"] });
         return;
@@ -145,30 +148,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "F5") {
-        reloadViaKeyboardRef.current = true;
-        return;
+    const INACTIVITY_MS = 30 * 60 * 1000;
+
+    if (!authReady || !session?.user) {
+      if (inactivityTimerRef.current) {
+        window.clearTimeout(inactivityTimerRef.current);
+        inactivityTimerRef.current = null;
       }
-      if ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R")) {
-        reloadViaKeyboardRef.current = true;
+      if (inactivityWarningTimerRef.current) {
+        window.clearTimeout(inactivityWarningTimerRef.current);
+        inactivityWarningTimerRef.current = null;
       }
-    };
-    const onPageHide = (ev: PageTransitionEvent) => {
-      if (ev.persisted) return;
-      if (reloadViaKeyboardRef.current) {
-        reloadViaKeyboardRef.current = false;
-        return;
-      }
+      toast.dismiss("session-expiring-warning");
+      return;
+    }
+
+    const performInactivityLogout = () => {
+      toast.dismiss("session-expiring-warning");
       void supabase.auth.signOut({ scope: "local" });
     };
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("pagehide", onPageHide);
-    return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("pagehide", onPageHide);
+
+    const resetInactivityTimer = () => {
+      if (inactivityTimerRef.current) {
+        window.clearTimeout(inactivityTimerRef.current);
+      }
+      if (inactivityWarningTimerRef.current) {
+        window.clearTimeout(inactivityWarningTimerRef.current);
+      }
+      toast.dismiss("session-expiring-warning");
+      inactivityWarningTimerRef.current = window.setTimeout(() => {
+        toast.warning("Sua sessão expira em 1 minuto por inatividade.", {
+          id: "session-expiring-warning",
+        });
+      }, INACTIVITY_MS - 60 * 1000);
+      inactivityTimerRef.current = window.setTimeout(performInactivityLogout, INACTIVITY_MS);
     };
-  }, []);
+
+    const activityEvents: Array<keyof WindowEventMap> = ["pointerdown", "keydown", "scroll", "touchstart"];
+    for (const eventName of activityEvents) {
+      window.addEventListener(eventName, resetInactivityTimer, { passive: true });
+    }
+    resetInactivityTimer();
+
+    return () => {
+      for (const eventName of activityEvents) {
+        window.removeEventListener(eventName, resetInactivityTimer);
+      }
+      if (inactivityTimerRef.current) {
+        window.clearTimeout(inactivityTimerRef.current);
+        inactivityTimerRef.current = null;
+      }
+      if (inactivityWarningTimerRef.current) {
+        window.clearTimeout(inactivityWarningTimerRef.current);
+        inactivityWarningTimerRef.current = null;
+      }
+      toast.dismiss("session-expiring-warning");
+    };
+  }, [authReady, session?.user?.id]);
 
   useEffect(() => {
     const refreshCache = () => {

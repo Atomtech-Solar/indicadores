@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { queryClient } from "@/lib/query-client";
 import { supabase } from "@/lib/supabase/client";
 import { resolvePostLoginDestination } from "@/lib/auth-routes";
 
@@ -49,6 +50,7 @@ function Login() {
 
     setLoading(true);
     try {
+      queryClient.clear();
       // Garante estado limpo antes de autenticar novamente.
       await supabase.auth.signOut({ scope: "local" });
       const { error } = await supabase.auth.signInWithPassword({
