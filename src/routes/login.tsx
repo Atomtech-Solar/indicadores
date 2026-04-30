@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/lib/supabase/client";
-import { useAuth } from "@/components/auth/auth-context";
 import { resolvePostLoginDestination } from "@/lib/auth-routes";
 
 type LoginSearch = { redirect?: string; email?: string };
@@ -37,16 +36,13 @@ function Login() {
   const navigate = useNavigate();
   const { redirect, email: emailFromSearch } = Route.useSearch();
   const safeRedirect = sanitizeRedirect(redirect);
-  const { user, isAdmin, authReady } = useAuth();
   const [email, setEmail] = useState(emailFromSearch ?? "");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!authReady || !user) return;
-    const destination = resolvePostLoginDestination({ isAdmin, redirect: safeRedirect });
-    void navigate({ to: destination, replace: true });
-  }, [authReady, user, isAdmin, safeRedirect, navigate]);
+    void supabase.auth.signOut({ scope: "local" });
+  }, []);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -85,22 +81,6 @@ function Login() {
       setLoading(false);
     }
   };
-
-  if (!authReady) {
-    return (
-      <div className="min-h-screen grid place-items-center px-6 bg-gradient-hero">
-        <p className="text-sm text-muted-foreground">Verificando sessão…</p>
-      </div>
-    );
-  }
-
-  if (user) {
-    return (
-      <div className="min-h-screen grid place-items-center px-6 bg-gradient-hero">
-        <p className="text-sm text-muted-foreground">Redirecionando…</p>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-hero flex flex-col">

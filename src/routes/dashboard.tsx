@@ -1843,7 +1843,26 @@ function NovaIndicacaoModal({
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.nome || !form.whatsapp) return;
+    if (!form.nome.trim() || !form.whatsapp.trim()) {
+      toast.error("Preencha nome e WhatsApp.");
+      return;
+    }
+    if (!contaEnergiaFile) {
+      toast.error("A foto da conta de energia é obrigatória.");
+      return;
+    }
+    if (!fotoPadraoFile) {
+      toast.error("A foto do padrão é obrigatória.");
+      return;
+    }
+    if (form.tipoProjetos.length === 0) {
+      toast.error("Selecione ao menos uma solução de interesse.");
+      return;
+    }
+    if (!form.observacoes.trim()) {
+      toast.error("Preencha o campo de observações.");
+      return;
+    }
     mutation.mutate();
   };
 
@@ -1920,6 +1939,7 @@ function NovaIndicacaoModal({
             <Input
               id="m-conta-energia"
               type="file"
+              required
               accept="image/*"
               onChange={(e) => {
                 const file = e.target.files?.[0] ?? null;
@@ -1952,6 +1972,7 @@ function NovaIndicacaoModal({
             <Input
               id="m-foto-padrao"
               type="file"
+              required
               accept="image/*"
               onChange={(e) => {
                 const file = e.target.files?.[0] ?? null;
@@ -2012,6 +2033,7 @@ function NovaIndicacaoModal({
             </Label>
             <Textarea
               id="m-observacoes"
+              required
               value={form.observacoes}
               onChange={(e) => setForm({ ...form, observacoes: e.target.value })}
               placeholder="Descreva detalhes úteis do cliente (consumo, urgência, orçamento, perfil do imóvel ou negócio). Quanto mais contexto, maior a chance de fechamento."

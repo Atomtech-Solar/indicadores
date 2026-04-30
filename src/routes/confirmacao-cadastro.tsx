@@ -27,7 +27,7 @@ export const Route = createFileRoute("/confirmacao-cadastro")({
 function ConfirmacaoCadastroOTP() {
   const navigate = useNavigate();
   const { email: emailParam, redirect } = Route.useSearch();
-  const [email, setEmail] = useState(emailParam ?? "");
+  const [email, setEmail] = useState((emailParam ?? "").trim());
   const [registerDraft, setRegisterDraft] = useState<RegisterDraft | null>(null);
   const [otpDigits, setOtpDigits] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [loading, setLoading] = useState(false);
@@ -49,8 +49,8 @@ function ConfirmacaoCadastroOTP() {
     try {
       const parsed = JSON.parse(rawDraft) as RegisterDraft;
       setRegisterDraft(parsed);
-      if (!emailParam && parsed.email) {
-        setEmail(parsed.email);
+      if (parsed.email) {
+        setEmail(parsed.email.trim());
       }
     } catch {
       sessionStorage.removeItem(REGISTER_DRAFT_KEY);
@@ -180,7 +180,8 @@ function ConfirmacaoCadastroOTP() {
                 id="confirm-email"
                 type="email"
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                readOnly
+                disabled
                 className="mt-1.5 h-11 rounded-[10px]"
               />
             </div>

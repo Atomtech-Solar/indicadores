@@ -170,6 +170,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  useEffect(() => {
+    const refreshCache = () => {
+      void queryClient.invalidateQueries();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshCache();
+      }
+    };
+    window.addEventListener("focus", refreshCache);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("focus", refreshCache);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
