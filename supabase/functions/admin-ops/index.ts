@@ -59,133 +59,10 @@ async function ensureAdmin(adminClient: SupabaseClient, authUserId: string): Pro
   }
 }
 
-function monthKeyFromIso(iso: string): string {
-  return iso.slice(0, 7);
-}
-
 async function getOverview(adminClient: SupabaseClient) {
-  const [{ data: indicacoes }, { data: comissoes }, { data: usuariosRoles }] = await Promise.all([
-    adminClient.from("indicacoes").select("id, nome_indicado, status, valor_projeto, created_at, updated_at"),
-    adminClient
-      .from("comissoes")
-      .select("id, usuario_id, indicacao_id, valor, status, created_at, updated_at, data_pagamento"),
-    adminClient.from("usuarios").select("id, nome, role"),
-  ]);
-
-  const now = new Date();
-  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const safeIndicacoes = indicacoes ?? [];
-  const safeComissoes = comissoes ?? [];
-  const safeUsuarios = usuariosRoles ?? [];
-
-  const totalFaturamento = safeIndicacoes
-    .filter((i) => i.status === "fechado" && i.valor_projeto != null)
-    .reduce((acc, i) => acc + Number(i.valor_projeto), 0);
-
-  const faturamentoMes = safeIndicacoes
-    .filter(
-      (i) =>
-        i.status === "fechado" &&
-        i.valor_projeto != null &&
-        monthKeyFromIso(i.updated_at) === currentMonthKey,
-    )
-    .reduce((acc, i) => acc + Number(i.valor_projeto), 0);
-
-  const totalComissoesPagas = safeComissoes
-    .filter((c) => c.status === "pago")
-    .reduce((acc, c) => acc + Number(c.valor), 0);
-
-  const totalIndicadores = safeUsuarios.filter((u) => u.role === "indicador").length;
-  const totalIndicacoes = safeIndicacoes.length;
-
-  const growthSeries = Array.from({ length: 6 }).map((_, index) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    const label = d.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
-
-    const faturamento = safeIndicacoes
-      .filter(
-        (i) =>
-          i.status === "fechado" &&
-          i.valor_projeto != null &&
-          monthKeyFromIso(i.updated_at) === key,
-      )
-      .reduce((acc, i) => acc + Number(i.valor_projeto), 0);
-
-    const comissoesPagas = safeComissoes
-      .filter((c) => {
-        if (c.status !== "pago") return false;
-        const ref = (c.data_pagamento as string | null) ?? c.updated_at ?? c.created_at;
-        return monthKeyFromIso(ref) === key;
-      })
-      .reduce((acc, c) => acc + Number(c.valor), 0);
-
-    return { label, faturamento, comissoesPagas };
-  });
-
-  const funnel = {
-    enviado: safeIndicacoes.filter((i) => i.status === "enviado").length,
-    analise: safeIndicacoes.filter((i) => i.status === "analise").length,
-    negociacao: safeIndicacoes.filter((i) => i.status === "negociacao").length,
-    fechado: safeIndicacoes.filter((i) => i.status === "fechado").length,
-    perdido: safeIndicacoes.filter((i) => i.status === "perdido").length,
-  };
-
-  const sevenDaysAgo = new Date(now);
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const fechadosUltimos7 = safeIndicacoes.filter(
-    (i) => i.status === "fechado" && new Date(i.updated_at) >= sevenDaysAgo,
-  ).length;
-
-  const alerts: string[] = [];
-  if (fechadosUltimos7 === 0) {
-    alerts.push("⚠️ Nenhuma venda fechada recentemente");
-  }
-  if (funnel.analise >= 5) {
-    alerts.push(`⚠️ ${funnel.analise} indicações aguardando análise`);
-  }
-  const last = growthSeries[growthSeries.length - 1];
-  const prev = growthSeries[growthSeries.length - 2];
-  if (last && prev && last.faturamento > prev.faturamento && last.faturamento > 0) {
-    alerts.push("📈 Faturamento em crescimento este mês");
-  }
-  if (alerts.length === 0) {
-    alerts.push("Operação estável no momento.");
-  }
-
-  const userNameById = new Map<number, string>(safeUsuarios.map((u) => [u.id as number, (u.nome as string) ?? "Usuário"]));
-  const indicacaoNameById = new Map<number, string>(
-    safeIndicacoes.map((i) => [i.id as number, (i.nome_indicado as string) ?? "Indicação"]),
-  );
-
-  const comissoesPagasLista = safeComissoes
-    .filter((c) => c.status === "pago")
-    .map((c) => {
-      const ref = (c.data_pagamento as string | null) ?? (c.updated_at as string) ?? (c.created_at as string);
-      return {
-        id: c.id as number,
-        usuario_nome: userNameById.get(c.usuario_id as number) ?? "Usuário",
-        indicacao_nome: indicacaoNameById.get(c.indicacao_id as number) ?? `Indicação #${c.indicacao_id}`,
-        valor: Number(c.valor),
-        data_pagamento: ref,
-      };
-    })
-    .sort((a, b) => new Date(b.data_pagamento).getTime() - new Date(a.data_pagamento).getTime())
-    .slice(0, 50);
-
-  return {
-    metrics: {
-      totalFaturamento,
-      faturamentoMes,
-      totalComissoesPagas,
-      totalIndicacoes,
-      totalIndicadores,
-    },
-    comissoesPagasLista,
-    growthSeries,
-    funnel,
-    alerts,
-  };
+  const { data, error } = await adminClient.rpc("get_admin_overview");
+  if (error) throw error;
+  return data;
 }
 
 async function listUsers(adminClient: SupabaseClient) {
@@ -228,28 +105,38 @@ async function listFotos(adminClient: SupabaseClient) {
 
   const userNameById = new Map<number, string>((usuarios ?? []).map((u) => [u.id, u.nome ?? "Sem nome"]));
 
-  const withUrls = await Promise.all(
-    (indicacoes ?? []).map(async (i) => {
-      const contaEnergiaUrl = i.conta_energia_url
-        ? (await adminClient.storage.from("indicacoes-comprovantes").createSignedUrl(i.conta_energia_url, 60 * 60)).data?.signedUrl ?? null
-        : null;
-      const fotoPadraoUrl = i.foto_padrao_url
-        ? (await adminClient.storage.from("indicacoes-comprovantes").createSignedUrl(i.foto_padrao_url, 60 * 60)).data?.signedUrl ?? null
-        : null;
-
-      return {
-        id: i.id,
-        usuario_nome: userNameById.get(i.usuario_id) ?? "Usuário",
-        nome_indicado: i.nome_indicado,
-        whatsapp: i.whatsapp ?? null,
-        tipo_projeto: i.tipo_projeto,
-        observacoes: i.observacoes,
-        conta_energia_url: contaEnergiaUrl,
-        foto_padrao_url: fotoPadraoUrl,
-        created_at: i.created_at,
-      };
-    }),
+  const allPaths = Array.from(
+    new Set(
+      (indicacoes ?? [])
+        .flatMap((i) => [i.conta_energia_url, i.foto_padrao_url])
+        .filter((p): p is string => Boolean(p)),
+    ),
   );
+
+  const signedUrlByPath = new Map<string, string>();
+  if (allPaths.length > 0) {
+    const { data: signedBatch, error: signedError } = await adminClient.storage
+      .from("indicacoes-comprovantes")
+      .createSignedUrls(allPaths, 60 * 60);
+    if (signedError) throw signedError;
+    for (const item of signedBatch ?? []) {
+      if (item.path && item.signedUrl) {
+        signedUrlByPath.set(item.path, item.signedUrl);
+      }
+    }
+  }
+
+  const withUrls = (indicacoes ?? []).map((i) => ({
+    id: i.id,
+    usuario_nome: userNameById.get(i.usuario_id) ?? "Usuário",
+    nome_indicado: i.nome_indicado,
+    whatsapp: i.whatsapp ?? null,
+    tipo_projeto: i.tipo_projeto,
+    observacoes: i.observacoes,
+    conta_energia_url: i.conta_energia_url ? (signedUrlByPath.get(i.conta_energia_url) ?? null) : null,
+    foto_padrao_url: i.foto_padrao_url ? (signedUrlByPath.get(i.foto_padrao_url) ?? null) : null,
+    created_at: i.created_at,
+  }));
 
   return withUrls;
 }
