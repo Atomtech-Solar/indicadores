@@ -7,9 +7,56 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { queryClient } from "@/lib/query-client";
 import { supabase } from "@/lib/supabase/client";
-import { resolvePostLoginDestination } from "@/lib/auth-routes";
 
 type LoginSearch = { redirect?: string; email?: string };
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, errorMessage: string): Promise<T> {
+  let timeoutId: number | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = window.setTimeout(() => reject(new Error(errorMessage)), ms);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) window.clearTimeout(timeoutId);
+  }
+}
+
+function clearSupabaseLocalAuthStorage() {
+  try {
+    const localKeysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith("sb-") && key.includes("-auth-token")) {
+        localKeysToRemove.push(key);
+      }
+    }
+    localKeysToRemove.forEach((key) => localStorage.removeItem(key));
+
+    const sessionKeysToRemove: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i += 1) {
+      const key = sessionStorage.key(i);
+      if (key && key.startsWith("sb-") && key.includes("-auth-token")) {
+        sessionKeysToRemove.push(key);
+      }
+    }
+    sessionKeysToRemove.forEach((key) => sessionStorage.removeItem(key));
+  } catch {
+    // Ignora erros de acesso ao storage (modo privado/restrições do browser).
+  }
+}
+
+async function forceAuthRecovery() {
+  queryClient.clear();
+  clearSupabaseLocalAuthStorage();
+  try {
+    await withTimeout(supabase.auth.signOut({ scope: "local" }), 3000, "Timeout ao finalizar sessão local.");
+  } catch {
+    // Mesmo com erro, a limpeza local já foi aplicada.
+  }
+}
 
 function sanitizeRedirect(redirect?: string): string | undefined {
   if (!redirect) return undefined;
@@ -43,6 +90,7 @@ function Login() {
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (loading) return;
     if (!email.trim() || !password) {
       toast.error("Informe e-mail e senha.");
       return;
@@ -51,12 +99,21 @@ function Login() {
     setLoading(true);
     try {
       queryClient.clear();
-      // Garante estado limpo antes de autenticar novamente.
-      await supabase.auth.signOut({ scope: "local" });
-      const { error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+      // Garante estado limpo antes de autenticar novamente, sem travar o submit.
+      try {
+        await withTimeout(supabase.auth.signOut({ scope: "local" }), 5000, "Timeout ao limpar sessão anterior.");
+      } catch {
+        // Se o signOut local travar, seguimos para tentar novo login.
+      }
+
+      const { error } = await withTimeout(
+        supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        }),
+        12000,
+        "A autenticação demorou além do esperado.",
+      );
 
       if (error) {
         const message = error.message.toLowerCase();
@@ -68,15 +125,17 @@ function Login() {
         return;
       }
 
-      const { data: isAdminRpc } = await supabase.rpc("is_admin");
-      const destination = resolvePostLoginDestination({
-        isAdmin: isAdminRpc === true,
-        redirect: safeRedirect,
-      });
+      const destination = safeRedirect ?? "/dashboard";
 
       navigate({ to: destination, replace: true });
-    } catch {
-      toast.error("Não foi possível entrar agora. Tente novamente.");
+    } catch (error) {
+      await forceAuthRecovery();
+      const message = error instanceof Error ? error.message.toLowerCase() : "";
+      if (message.includes("timeout") || message.includes("demorou")) {
+        toast.error("Sua sessão anterior travou. Limpamos o estado local, tente entrar novamente.");
+      } else {
+        toast.error("Não foi possível entrar agora. Tente novamente.");
+      }
     } finally {
       setLoading(false);
     }
