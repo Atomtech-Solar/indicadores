@@ -40,10 +40,6 @@ function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    void supabase.auth.signOut({ scope: "local" });
-  }, []);
-
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!email.trim() || !password) {
@@ -53,6 +49,8 @@ function Login() {
 
     setLoading(true);
     try {
+      // Garante estado limpo antes de autenticar novamente.
+      await supabase.auth.signOut({ scope: "local" });
       const { error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
