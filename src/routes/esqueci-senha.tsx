@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -20,13 +20,24 @@ export const Route = createFileRoute("/esqueci-senha")({
 });
 
 function EsqueciSenha() {
+  const COOLDOWN_SECONDS = 60;
   const { email: emailFromSearch } = Route.useSearch();
   const [email, setEmail] = useState(emailFromSearch ?? "");
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setCooldown((prev) => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [cooldown]);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (loading || cooldown > 0) return;
     if (!email.trim()) {
       toast.error("Informe seu e-mail para recuperar a senha.");
       setFeedback("Informe seu e-mail para recuperar a senha.");
@@ -37,12 +48,21 @@ function EsqueciSenha() {
     setFeedback("");
     try {
       const redirectTo = `${window.location.origin}/redefinir-senha`;
-      await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+      if (error) throw error;
+      setCooldown(COOLDOWN_SECONDS);
       toast.success("Se o e-mail existir, enviamos o link de redefinição.");
       setFeedback("Se o e-mail existir, enviaremos um link para redefinição de senha.");
-    } catch {
-      toast.error("Não foi possível enviar o link agora. Tente novamente em instantes.");
-      setFeedback("Não foi possível enviar o link agora. Tente novamente em instantes.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message.toLowerCase() : "";
+      if (message.includes("429") || message.includes("too many requests") || message.includes("rate limit")) {
+        setCooldown(COOLDOWN_SECONDS);
+        toast.error("Muitas tentativas. Aguarde 1 minuto para tentar novamente.");
+        setFeedback("Muitas tentativas detectadas. Aguarde 1 minuto e tente novamente.");
+      } else {
+        toast.error("Não foi possível enviar o link agora. Tente novamente em instantes.");
+        setFeedback("Não foi possível enviar o link agora. Tente novamente em instantes.");
+      }
     } finally {
       setLoading(false);
     }
@@ -67,6 +87,9 @@ function EsqueciSenha() {
             <p className="text-sm text-muted-foreground mt-2">
               Digite seu e-mail para receber o link de redefinição.
             </p>
+            <p className="text-xs text-muted-foreground mt-2">
+              O e-mail pode levar cerca de 2 minutos para chegar.
+            </p>
           </div>
 
           <form onSubmit={(event) => void submit(event)} className="space-y-4">
@@ -85,8 +108,8 @@ function EsqueciSenha() {
                 className="mt-1.5 rounded-[10px] h-11"
               />
             </div>
-            <Button type="submit" disabled={loading} className="w-full rounded-xl h-12 text-base font-semibold">
-              {loading ? "Enviando..." : "Enviar link de redefinição"}
+            <Button type="submit" disabled={loading || cooldown > 0} className="w-full rounded-xl h-12 text-base font-semibold">
+              {loading ? "Enviando..." : cooldown > 0 ? `Aguarde ${cooldown}s` : "Enviar link de redefinição"}
             </Button>
           </form>
 
