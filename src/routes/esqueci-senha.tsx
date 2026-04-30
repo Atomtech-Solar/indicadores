@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +28,7 @@ function EsqueciSenha() {
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!email.trim()) {
+      toast.error("Informe seu e-mail para recuperar a senha.");
       setFeedback("Informe seu e-mail para recuperar a senha.");
       return;
     }
@@ -36,8 +38,10 @@ function EsqueciSenha() {
     try {
       const redirectTo = `${window.location.origin}/redefinir-senha`;
       await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+      toast.success("Se o e-mail existir, enviamos o link de redefinição.");
       setFeedback("Se o e-mail existir, enviaremos um link para redefinição de senha.");
     } catch {
+      toast.error("Não foi possível enviar o link agora. Tente novamente em instantes.");
       setFeedback("Não foi possível enviar o link agora. Tente novamente em instantes.");
     } finally {
       setLoading(false);
