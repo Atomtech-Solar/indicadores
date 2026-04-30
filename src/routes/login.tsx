@@ -185,6 +185,15 @@ function Login() {
                 placeholder="Sua senha"
                 className="mt-1.5 rounded-[10px] h-11"
               />
+              <div className="mt-2 text-right">
+                <Link
+                  to="/esqueci-senha"
+                  search={{ email: email.trim() || undefined }}
+                  className="text-xs font-medium text-primary hover:underline"
+                >
+                  Esqueci minha senha
+                </Link>
+              </div>
             </div>
             <Button type="submit" disabled={loading} className="w-full rounded-xl h-12 text-base font-semibold mt-2">
               {loading ? "Entrando..." : "Entrar"}

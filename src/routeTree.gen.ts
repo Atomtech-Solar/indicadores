@@ -13,6 +13,8 @@ import { Route as PosCadastroRouteImport } from './routes/pos-cadastro'
 import { Route as PerfilRouteImport } from './routes/perfil'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as EsqueciSenhaRouteImport } from './routes/esqueci-senha'
+import { Route as RedefinirSenhaRouteImport } from './routes/redefinir-senha'
 import { Route as IndicacoesRouteImport } from './routes/indicacoes'
 import { Route as IndicacaoConfirmacaoRouteImport } from './routes/indicacao-confirmacao'
 import { Route as DashboardRouteImport } from './routes/dashboard'
@@ -40,6 +42,16 @@ const OnboardingRoute = OnboardingRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EsqueciSenhaRoute = EsqueciSenhaRouteImport.update({
+  id: '/esqueci-senha',
+  path: '/esqueci-senha',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RedefinirSenhaRoute = RedefinirSenhaRouteImport.update({
+  id: '/redefinir-senha',
+  path: '/redefinir-senha',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndicacoesRoute = IndicacoesRouteImport.update({
@@ -93,6 +105,8 @@ export interface FileRoutesByFullPath {
   '/indicacao-confirmacao': typeof IndicacaoConfirmacaoRoute
   '/indicacoes': typeof IndicacoesRoute
   '/login': typeof LoginRoute
+  '/esqueci-senha': typeof EsqueciSenhaRoute
+  '/redefinir-senha': typeof RedefinirSenhaRoute
   '/onboarding': typeof OnboardingRoute
   '/perfil': typeof PerfilRoute
   '/pos-cadastro': typeof PosCadastroRoute
@@ -107,6 +121,8 @@ export interface FileRoutesByTo {
   '/indicacao-confirmacao': typeof IndicacaoConfirmacaoRoute
   '/indicacoes': typeof IndicacoesRoute
   '/login': typeof LoginRoute
+  '/esqueci-senha': typeof EsqueciSenhaRoute
+  '/redefinir-senha': typeof RedefinirSenhaRoute
   '/onboarding': typeof OnboardingRoute
   '/perfil': typeof PerfilRoute
   '/pos-cadastro': typeof PosCadastroRoute
@@ -122,6 +138,8 @@ export interface FileRoutesById {
   '/indicacao-confirmacao': typeof IndicacaoConfirmacaoRoute
   '/indicacoes': typeof IndicacoesRoute
   '/login': typeof LoginRoute
+  '/esqueci-senha': typeof EsqueciSenhaRoute
+  '/redefinir-senha': typeof RedefinirSenhaRoute
   '/onboarding': typeof OnboardingRoute
   '/perfil': typeof PerfilRoute
   '/pos-cadastro': typeof PosCadastroRoute
@@ -138,6 +156,8 @@ export interface FileRouteTypes {
     | '/indicacao-confirmacao'
     | '/indicacoes'
     | '/login'
+    | '/esqueci-senha'
+    | '/redefinir-senha'
     | '/onboarding'
     | '/perfil'
     | '/pos-cadastro'
@@ -152,6 +172,8 @@ export interface FileRouteTypes {
     | '/indicacao-confirmacao'
     | '/indicacoes'
     | '/login'
+    | '/esqueci-senha'
+    | '/redefinir-senha'
     | '/onboarding'
     | '/perfil'
     | '/pos-cadastro'
@@ -166,6 +188,8 @@ export interface FileRouteTypes {
     | '/indicacao-confirmacao'
     | '/indicacoes'
     | '/login'
+    | '/esqueci-senha'
+    | '/redefinir-senha'
     | '/onboarding'
     | '/perfil'
     | '/pos-cadastro'
@@ -181,6 +205,8 @@ export interface RootRouteChildren {
   IndicacaoConfirmacaoRoute: typeof IndicacaoConfirmacaoRoute
   IndicacoesRoute: typeof IndicacoesRoute
   LoginRoute: typeof LoginRoute
+  EsqueciSenhaRoute: typeof EsqueciSenhaRoute
+  RedefinirSenhaRoute: typeof RedefinirSenhaRoute
   OnboardingRoute: typeof OnboardingRoute
   PerfilRoute: typeof PerfilRoute
   PosCadastroRoute: typeof PosCadastroRoute
@@ -214,6 +240,20 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/esqueci-senha': {
+      id: '/esqueci-senha'
+      path: '/esqueci-senha'
+      fullPath: '/esqueci-senha'
+      preLoaderRoute: typeof EsqueciSenhaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/redefinir-senha': {
+      id: '/redefinir-senha'
+      path: '/redefinir-senha'
+      fullPath: '/redefinir-senha'
+      preLoaderRoute: typeof RedefinirSenhaRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/indicacoes': {
@@ -285,6 +325,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndicacaoConfirmacaoRoute: IndicacaoConfirmacaoRoute,
   IndicacoesRoute: IndicacoesRoute,
   LoginRoute: LoginRoute,
+  EsqueciSenhaRoute: EsqueciSenhaRoute,
+  RedefinirSenhaRoute: RedefinirSenhaRoute,
   OnboardingRoute: OnboardingRoute,
   PerfilRoute: PerfilRoute,
   PosCadastroRoute: PosCadastroRoute,
