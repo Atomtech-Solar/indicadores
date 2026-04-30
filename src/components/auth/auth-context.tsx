@@ -79,7 +79,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      const { data, error } = await supabase.rpc("is_admin");
+      const { data, error } = await (supabase as unknown as {
+        rpc: (fn: string) => Promise<{ data: boolean | null; error: unknown }>;
+      }).rpc("is_admin");
       if (!isMounted || seq !== roleFetchSeqRef.current) return;
 
       if (error) {
@@ -118,8 +120,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setRole(null);
-      await resolveRole(uid);
       finishBootstrap();
+      void resolveRole(uid);
     };
 
     void bootstrap();
@@ -160,10 +162,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
       }
-
-      await resolveRole(nextId);
       clearAuthWatchdog();
       setAuthReady(true);
+      void resolveRole(nextId);
 
       void queryClient.invalidateQueries({ queryKey: ["auth"] });
       void queryClient.invalidateQueries({ queryKey: ["usuario"] });
