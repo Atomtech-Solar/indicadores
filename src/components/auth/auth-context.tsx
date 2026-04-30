@@ -35,9 +35,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const roleCacheRef = useRef<Map<string, "indicador" | "admin">>(new Map());
   const inactivityTimerRef = useRef<number | null>(null);
   const inactivityWarningTimerRef = useRef<number | null>(null);
+  const authWatchdogTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     let isMounted = true;
+    const AUTH_BOOTSTRAP_TIMEOUT_MS = 12_000;
+
+    const clearAuthWatchdog = () => {
+      if (authWatchdogTimerRef.current) {
+        window.clearTimeout(authWatchdogTimerRef.current);
+        authWatchdogTimerRef.current = null;
+      }
+    };
+
+    const scheduleAuthWatchdog = () => {
+      clearAuthWatchdog();
+      authWatchdogTimerRef.current = window.setTimeout(() => {
+        if (!isMounted) return;
+        toast.error("Sessão instável. Redirecionando para novo login.");
+        roleCacheRef.current.clear();
+        setSession(null);
+        setUser(null);
+        setRole(null);
+        setAuthReady(true);
+        queryClient.clear();
+        void supabase.auth.signOut({ scope: "local" });
+      }, AUTH_BOOTSTRAP_TIMEOUT_MS);
+    };
 
     const resolveRole = async (authUserId: string | null) => {
       const seq = ++roleFetchSeqRef.current;
@@ -69,11 +93,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const finishBootstrap = () => {
+      clearAuthWatchdog();
       if (isMounted) setAuthReady(true);
     };
 
     const bootstrap = async () => {
       setAuthReady(false);
+      scheduleAuthWatchdog();
       const {
         data: { session: initialSession },
       } = await supabase.auth.getSession();
@@ -108,12 +134,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         lastUserIdRef.current = nextId;
         setAuthReady(false);
         setRole(null);
+        scheduleAuthWatchdog();
       }
 
       setSession(nextSession);
       setUser(nextSession?.user ?? null);
 
       if (!nextId) {
+        clearAuthWatchdog();
         setRole(null);
         roleCacheRef.current.clear();
         setAuthReady(true);
@@ -126,6 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (nextId === prevId) {
         const cachedRole = roleCacheRef.current.get(nextId);
         if (cachedRole) {
+          clearAuthWatchdog();
           setRole(cachedRole);
           setAuthReady(true);
           return;
@@ -133,6 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       await resolveRole(nextId);
+      clearAuthWatchdog();
       setAuthReady(true);
 
       void queryClient.invalidateQueries({ queryKey: ["auth"] });
@@ -143,6 +173,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return () => {
       isMounted = false;
+      clearAuthWatchdog();
       subscription.unsubscribe();
     };
   }, []);
