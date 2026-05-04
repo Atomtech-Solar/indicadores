@@ -3,6 +3,8 @@ import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-
 type RegisterPayload = {
   email: string;
   password: string;
+  nome: string;
+  whatsapp: string;
   captchaToken: string;
 };
 
@@ -125,11 +127,13 @@ async function checkRateLimitWithCount(
 
   const emailAttemptsLastMinute = emailCount ?? 0;
   const ipAttemptsLastMinute = ipCount ?? 0;
+  const hasKnownIp = input.ip !== "unknown";
 
   return {
+    // Regra principal por e-mail; IP atua como proteção extra somente quando disponível.
     allowed:
       emailAttemptsLastMinute <= EMAIL_LIMIT_PER_MINUTE &&
-      ipAttemptsLastMinute <= IP_LIMIT_PER_MINUTE,
+      (!hasKnownIp || ipAttemptsLastMinute <= IP_LIMIT_PER_MINUTE),
     emailAttemptsLastMinute,
     ipAttemptsLastMinute,
   };
@@ -139,16 +143,39 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-async function createUser(supabase: SupabaseClient, email: string, password: string): Promise<void> {
-  const { error } = await supabase.auth.admin.createUser({
-    email,
-    password,
+async function createUser(
+  supabase: SupabaseClient,
+  input: { email: string; password: string; nome: string; whatsapp: string },
+): Promise<string> {
+  const { data, error } = await supabase.auth.admin.createUser({
+    email: input.email,
+    password: input.password,
     email_confirm: false,
+    user_metadata: {
+      nome: input.nome,
+      whatsapp: input.whatsapp,
+    },
   });
 
-  if (error) {
+  if (error || !data.user?.id) {
     throw new Error("CREATE_USER_FAILED");
   }
+  return data.user.id;
+}
+
+async function upsertUsuarioProfile(
+  supabase: SupabaseClient,
+  input: { userId: string; nome: string; whatsapp: string },
+): Promise<void> {
+  const { error } = await supabase.from("usuarios").upsert(
+    {
+      usuario_id: input.userId,
+      nome: input.nome,
+      whatsapp: input.whatsapp,
+    },
+    { onConflict: "usuario_id" },
+  );
+  if (error) throw new Error("UPSERT_USUARIO_FAILED");
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -174,6 +201,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const payload = (await req.json()) as Partial<RegisterPayload>;
     const email = normalizeEmail(payload.email ?? "");
     const password = payload.password;
+    const nome = payload.nome?.trim();
+    const whatsapp = payload.whatsapp?.trim();
     const captchaToken = payload.captchaToken;
 
     const rateLimit = await checkRateLimitWithCount(supabase, { email: email || "invalid", ip });
@@ -190,7 +219,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return jsonResponse(429, { error: "Não foi possível concluir a solicitação." });
     }
 
-    if (!email || !email.includes("@") || !password || password.length < 6 || !captchaToken) {
+    if (!email || !email.includes("@") || !password || password.length < 6 || !nome || !whatsapp || !captchaToken) {
       logSuspiciousAttempt({
         ip,
         email: email || "invalid",
@@ -213,7 +242,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return jsonResponse(400, { error: "Não foi possível concluir a solicitação." });
     }
 
-    await createUser(supabase, email, password);
+    const userId = await createUser(supabase, { email, password, nome, whatsapp });
+    await upsertUsuarioProfile(supabase, { userId, nome, whatsapp });
 
     return jsonResponse(200, { message: "Cadastro realizado com sucesso." });
   } catch (error) {

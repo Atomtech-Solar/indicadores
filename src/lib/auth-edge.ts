@@ -60,12 +60,14 @@ async function callEdgeFunction(path: string, body: Record<string, unknown>): Pr
   }
 }
 
-export async function registerWithPassword(input: { email: string; password: string }): Promise<EdgeResult> {
+export async function registerWithPassword(input: { email: string; password: string; nome: string; whatsapp: string }): Promise<EdgeResult> {
   // A função atual register-user exige captchaToken.
   const captchaToken = `captcha-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   return callEdgeFunction("register-user", {
     email: input.email.trim(),
     password: input.password,
+    nome: input.nome.trim(),
+    whatsapp: input.whatsapp.trim(),
     captchaToken,
   });
 }

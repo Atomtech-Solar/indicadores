@@ -63,6 +63,8 @@ function Cadastro() {
       const registerResult = await registerWithPassword({
         email: form.email.trim(),
         password: form.senha,
+        nome: form.nome.trim(),
+        whatsapp: form.whatsapp.trim(),
       });
       if (!registerResult.success) {
         if (registerResult.status === 429) {

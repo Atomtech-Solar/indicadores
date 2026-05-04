@@ -29,6 +29,8 @@ function ConfirmacaoCadastroOTP() {
   const { email: emailParam, redirect } = Route.useSearch();
   const [email, setEmail] = useState((emailParam ?? "").trim());
   const [registerDraft, setRegisterDraft] = useState<RegisterDraft | null>(null);
+  const [nome, setNome] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
   const [otpDigits, setOtpDigits] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -52,6 +54,8 @@ function ConfirmacaoCadastroOTP() {
       if (parsed.email) {
         setEmail(parsed.email.trim());
       }
+      setNome(parsed.nome?.trim() ?? "");
+      setWhatsapp(parsed.whatsapp?.trim() ?? "");
     } catch {
       sessionStorage.removeItem(REGISTER_DRAFT_KEY);
     }
@@ -103,8 +107,8 @@ function ConfirmacaoCadastroOTP() {
       const result = await verifyOtpEdge({
         email: email.trim(),
         code: otpCode,
-        nome: registerDraft?.nome,
-        whatsapp: registerDraft?.whatsapp,
+        nome: nome.trim() || undefined,
+        whatsapp: whatsapp.trim() || undefined,
       });
       if (!result.success) throw new Error("VERIFY_OTP_FAILED");
 
@@ -182,6 +186,26 @@ function ConfirmacaoCadastroOTP() {
                 value={email}
                 readOnly
                 disabled
+                className="mt-1.5 h-11 rounded-[10px]"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="confirm-nome" className="text-sm font-medium">Nome</Label>
+              <Input
+                id="confirm-nome"
+                value={nome}
+                onChange={(event) => setNome(event.target.value)}
+                className="mt-1.5 h-11 rounded-[10px]"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="confirm-whatsapp" className="text-sm font-medium">WhatsApp</Label>
+              <Input
+                id="confirm-whatsapp"
+                value={whatsapp}
+                onChange={(event) => setWhatsapp(event.target.value)}
                 className="mt-1.5 h-11 rounded-[10px]"
               />
             </div>

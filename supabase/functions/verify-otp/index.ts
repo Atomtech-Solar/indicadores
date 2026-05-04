@@ -45,6 +45,31 @@ async function verifyOtp(supabase: SupabaseClient, email: string, code: string):
   return data.user.id;
 }
 
+async function getFallbackProfile(
+  supabase: SupabaseClient,
+  userId: string,
+): Promise<{ nome?: string; whatsapp?: string }> {
+  const [{ data: authUserResp }, { data: usuarioResp }] = await Promise.all([
+    supabase.auth.admin.getUserById(userId),
+    supabase.from("usuarios").select("nome, whatsapp").eq("usuario_id", userId).maybeSingle(),
+  ]);
+
+  const nomeFromAuth = authUserResp?.user?.user_metadata?.nome;
+  const whatsappFromAuth = authUserResp?.user?.user_metadata?.whatsapp;
+  const nomeFromDb = usuarioResp?.nome;
+  const whatsappFromDb = usuarioResp?.whatsapp;
+
+  return {
+    nome: typeof nomeFromDb === "string" && nomeFromDb.trim() ? nomeFromDb.trim() : typeof nomeFromAuth === "string" ? nomeFromAuth.trim() : undefined,
+    whatsapp:
+      typeof whatsappFromDb === "string" && whatsappFromDb.trim()
+        ? whatsappFromDb.trim()
+        : typeof whatsappFromAuth === "string"
+          ? whatsappFromAuth.trim()
+          : undefined,
+  };
+}
+
 async function confirmUser(supabase: SupabaseClient, userId: string): Promise<void> {
   const { error } = await supabase.auth.admin.updateUserById(userId, {
     email_confirm: true,
@@ -104,8 +129,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     const userId = await verifyOtp(supabase, email, code);
+    const fallback = await getFallbackProfile(supabase, userId);
+    const finalNome = nome || fallback.nome;
+    const finalWhatsapp = whatsapp || fallback.whatsapp;
+    if (!finalNome || !finalWhatsapp) {
+      return jsonResponse(400, { error: "Não foi possível concluir a solicitação." });
+    }
     await confirmUser(supabase, userId);
-    await upsertUsuarioProfile(supabase, { userId, nome, whatsapp });
+    await upsertUsuarioProfile(supabase, { userId, nome: finalNome, whatsapp: finalWhatsapp });
 
     return jsonResponse(200, { message: "Código validado com sucesso." });
   } catch {

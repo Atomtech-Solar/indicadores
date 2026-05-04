@@ -82,11 +82,13 @@ async function checkRateLimit(
 
   const emailAttemptsLastMinute = emailCount ?? 0;
   const ipAttemptsLastMinute = ipCount ?? 0;
+  const hasKnownIp = input.ip !== "unknown";
 
   return {
+    // Regra principal por e-mail; IP atua como proteção extra somente quando disponível.
     allowed:
       emailAttemptsLastMinute <= EMAIL_LIMIT_PER_MINUTE &&
-      ipAttemptsLastMinute <= IP_LIMIT_PER_MINUTE,
+      (!hasKnownIp || ipAttemptsLastMinute <= IP_LIMIT_PER_MINUTE),
     emailAttemptsLastMinute,
     ipAttemptsLastMinute,
   };
