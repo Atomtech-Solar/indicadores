@@ -18,12 +18,12 @@ import {
   Facebook,
   Linkedin,
   Instagram,
-  Twitter,
   Menu,
   X,
   MessageCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
 import ativoLogoImage from "../../img/Ativo 1.png";
 import downArrowImage from "../../img/down-arrow.png";
@@ -31,12 +31,14 @@ import downArrowImage from "../../img/down-arrow.png";
 const CELULAR_HERO_URL = "https://i.ibb.co/Lzb68BpJ/Celular-Hero.png";
 const CTA_CADASTRO_URL = "https://i.ibb.co/3YF41xdm/CTA-Cadastro.png";
 const FECHADO_URL = "https://i.ibb.co/RTdgWXb3/Fechado.png";
+const WHATSAPP_ATOM_URL = "https://wa.me/556139781738";
+const FLUXO_PROCESSO_IMAGE_URL = "https://i.ibb.co/VpPkmnvM/Fluxo-do-projeto.jpg";
 const NAV_LINKS = [
   { label: "Como funciona", href: "#como-funciona" },
   { label: "Resultados", href: "#prova" },
   { label: "Por que funciona", href: "#objeções" },
   { label: "Dúvidas", href: "#duvidas" },
-  { label: "Começar", href: "#cta-final" },
+  { label: "Cadastrar", href: "#cta-final" },
 ];
 
 export const Route = createFileRoute("/")({
@@ -60,6 +62,7 @@ export const Route = createFileRoute("/")({
 
 function Landing() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [fluxoModalOpen, setFluxoModalOpen] = useState(false);
   const [splashPhase, setSplashPhase] = useState<"loading" | "reveal" | "ready">("loading");
 
   useEffect(() => {
@@ -109,7 +112,7 @@ function Landing() {
             </Link>
             <Link to="/cadastro">
               <Button variant="default" className="rounded-xl">
-                Começar
+                Cadastrar
               </Button>
             </Link>
           </div>
@@ -173,7 +176,7 @@ function Landing() {
             </Link>
             <Link to="/cadastro" onClick={() => setIsMobileMenuOpen(false)}>
               <Button className="w-full rounded-xl bg-[#1B8F3A] hover:bg-[#177A33]">
-                Começar
+                Cadastrar
               </Button>
             </Link>
           </div>
@@ -206,10 +209,20 @@ function Landing() {
               />
             </div>
             <p className="mt-6 text-base md:text-xl max-[600px]:text-lg max-[400px]:text-sm max-[360px]:text-xs leading-snug text-[#333333] max-w-xl max-[1060px]:mx-auto">
-              Você indica, nós fechamos e você recebe <span className="font-semibold text-[#1B8F3A]">comissão</span> por cada negócio fechado.
+              Você indica projetos de eficiência energética, nós fechamos e você recebe <span className="font-semibold text-[#1B8F3A]">comissão</span> por cada negócio fechado.
               <br />
               <span className="text-[#666666] text-base md:text-lg max-[600px]:text-base max-[400px]:text-sm max-[360px]:text-xs">Simples, transparente e sem precisar vender.</span>
             </p>
+            <div className="mt-3 flex flex-wrap gap-2 max-[1060px]:justify-center">
+              <span className="inline-flex items-center gap-2 rounded-full bg-[#E8F5E9] px-3 py-1 text-xs font-semibold text-[#1B8F3A]">
+                <span className="h-2 w-2 rounded-full bg-[#1B8F3A]" />
+                Placa solar
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full bg-[#E8F5E9] px-3 py-1 text-xs font-semibold text-[#1B8F3A]">
+                <span className="h-2 w-2 rounded-full bg-[#1B8F3A]" />
+                Carregador de carro elétrico
+              </span>
+            </div>
             <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:items-center max-[1060px]:justify-center max-[1060px]:items-center">
               <Link to="/cadastro">
                 <Button
@@ -220,16 +233,16 @@ function Landing() {
                   Quero começar a ganhar agora
                 </Button>
               </Link>
-              <a href="#como-funciona">
-                <Button
-                  size="lg"
-                  variant="outline"
-                  className="rounded-full h-12 px-6 text-sm font-bold uppercase border-[#1B8F3A] text-[#1B8F3A] bg-transparent hover:bg-[#1B8F3A]/10"
-                >
-                  Ver como funciona
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </a>
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                className="rounded-full h-12 px-6 text-sm font-bold uppercase border-[#1B8F3A] text-[#1B8F3A] bg-transparent hover:bg-[#1B8F3A]/10"
+                onClick={() => setFluxoModalOpen(true)}
+              >
+                Ver como funciona
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
             </div>
             <div className="mt-8 flex items-center gap-6 text-sm max-[400px]:text-xs max-[360px]:text-[10px] text-muted-foreground max-[1060px]:justify-center">
               <div className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-primary" /> Cadastro grátis</div>
@@ -260,6 +273,40 @@ function Landing() {
                 <p className="text-[28px] md:text-[30px] font-bold text-[#1B8F3A]">R$ 50.000,00</p>
                 <p className="text-xs text-[#666666]">em comissões para nossos parceiros!</p>
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="sobre-nos" className="px-4 md:px-6 py-12 md:py-16 bg-[#F3F4F6]">
+        <div className="max-w-7xl mx-auto flex flex-col gap-10 lg:flex-row lg:items-center lg:justify-center lg:gap-16 xl:gap-20">
+          <div className="order-2 lg:order-1 w-full min-w-0 max-w-2xl lg:max-w-[min(100%,28rem)] xl:max-w-[min(100%,32rem)] space-y-3 md:space-y-3.5 max-lg:text-center max-lg:mx-auto">
+            <span className="inline-flex rounded-full border border-[#D1D5DB] bg-[#E5E7EB] px-3 py-1 text-[10px] md:text-[11px] font-semibold uppercase tracking-wide text-[#374151]">
+              Atom Tech: Inovação e Energia
+            </span>
+            <h2 className="text-2xl md:text-[1.625rem] lg:text-[1.5rem] font-bold tracking-tight text-[#111111]">
+              Sobre nós
+            </h2>
+            <p className="text-[#1F2937] text-sm md:text-[0.9375rem] leading-snug md:leading-relaxed font-medium">
+              A Atom Tech é uma empresa de engenharia especialista em soluções energéticas e infraestrutura inteligente
+              para residências e empresas. Contamos com uma equipe altamente qualificada para entregar excelência e
+              segurança completa em instalações elétricas, sistemas de monitoramento, painéis solares e carregadores para
+              veículos elétricos.
+            </p>
+            <p className="text-[#4B5563] text-xs md:text-sm leading-snug md:leading-relaxed">
+              Nosso compromisso é unir tecnologia de ponta e sustentabilidade para modernizar o seu espaço. Garantimos
+              rigor técnico e eficiência máxima do planejamento à execução do seu projeto, conectando você ao futuro da
+              energia.
+            </p>
+          </div>
+
+          <div className="order-1 lg:order-2 shrink-0 w-full max-w-[300px] sm:max-w-[320px] md:max-w-[340px] lg:max-w-[min(100%,320px)] xl:max-w-[min(100%,360px)] mx-auto lg:mx-0">
+            <div className="overflow-hidden rounded-2xl bg-[#111111] shadow-[0_20px_50px_-24px_rgba(0,0,0,0.35)]">
+              <img
+                src="https://i.ibb.co/9H7fYbrQ/Sobre-Nos.png"
+                alt="Escritório Atom Tech — energia solar e tecnologia"
+                className="w-full h-auto object-cover aspect-square"
+              />
             </div>
           </div>
         </div>
@@ -465,10 +512,14 @@ function Landing() {
                     <ArrowRight className="ml-3 max-[400px]:ml-2 h-5 w-5 max-[400px]:h-4 max-[400px]:w-4" />
                   </Button>
                 </Link>
-                <a href="#como-funciona" className="inline-flex items-center gap-2 text-lg max-[600px]:text-base max-[400px]:text-sm max-[360px]:text-xs font-medium text-white/90 hover:text-white">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-2 text-lg max-[600px]:text-base max-[400px]:text-sm max-[360px]:text-xs font-medium text-white/90 hover:text-white"
+                  onClick={() => setFluxoModalOpen(true)}
+                >
                   Ver como funciona
                   <ArrowRight className="h-4 w-4" />
-                </a>
+                </button>
               </div>
             </div>
 
@@ -476,8 +527,32 @@ function Landing() {
         </div>
       </section>
 
+      <FluxoProcessoDialog open={fluxoModalOpen} onOpenChange={setFluxoModalOpen} />
+
       <SiteFooter />
     </div>
+  );
+}
+
+function FluxoProcessoDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[min(92vh,920px)] w-full max-w-[min(96vw,1120px)] gap-0 overflow-y-auto border bg-white p-2 sm:p-4 md:p-6">
+        <DialogTitle className="sr-only">Fluxo geral do processo</DialogTitle>
+        <img
+          src={FLUXO_PROCESSO_IMAGE_URL}
+          alt="Fluxo geral do processo: do cadastro ao pagamento da comissão"
+          className="w-full h-auto rounded-md object-contain"
+          loading="lazy"
+        />
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -617,30 +692,52 @@ function SiteFooter() {
   return (
     <footer className="bg-green-50 px-6 py-16 text-gray-900 max-[400px]:text-xs">
       <div className="max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 sm:grid-cols-2 min-[1061px]:grid-cols-4 gap-10 max-[600px]:grid-cols-2">
-          <div className="max-[1060px]:text-center max-[1060px]:mx-auto max-[600px]:col-span-2 max-[600px]:order-1">
-            <div className="inline-flex items-center gap-2 max-[1060px]:justify-center">
+        <div className="grid max-[999px]:grid-cols-2 max-[999px]:gap-x-8 max-[999px]:gap-y-10 max-[999px]:justify-items-center min-[1000px]:grid-cols-3 min-[1000px]:items-start min-[1000px]:justify-items-center min-[1000px]:gap-x-10 xl:gap-x-14">
+          <div className="min-w-0 w-full max-w-xl max-[999px]:col-span-2 mx-auto flex flex-col items-center min-[1000px]:max-w-[280px] xl:max-w-[300px]">
+            <div className="flex w-full justify-center">
               <img
                 src={ativoLogoImage}
                 alt="ATOM TECH"
-                className="h-11 w-auto object-contain"
+                className="h-11 w-auto object-contain min-[1000px]:h-10 xl:h-11"
               />
             </div>
-            <p className="mt-4 text-sm max-[400px]:text-xs text-gray-500 leading-relaxed max-w-xs max-[1060px]:mx-auto">
+            <p className="mt-4 w-full text-left text-sm max-[400px]:text-xs text-gray-500 leading-relaxed min-[1000px]:mt-3 min-[1000px]:text-xs min-[1000px]:leading-snug min-[1280px]:text-sm min-[1280px]:leading-relaxed">
               Plataforma desenvolvida para que usuários indiquem pessoas e ganhem comissões de forma simples, prática e transparente.
             </p>
-            <div className="mt-5 flex items-center gap-3 text-gray-500 max-[1060px]:justify-center">
-              <a href="#" className="transition-colors hover:text-green-600" aria-label="Facebook">
+            <div className="mt-5 flex w-full flex-wrap items-center justify-center gap-3 text-gray-500 min-[1000px]:mt-4 min-[1000px]:gap-2.5">
+              <a
+                href="https://www.facebook.com/atomtechsolar"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition-colors hover:text-green-600"
+                aria-label="Facebook Atom Tech Solar"
+              >
                 <Facebook className="h-4 w-4" />
               </a>
-              <a href="#" className="transition-colors hover:text-green-600" aria-label="LinkedIn">
+              <span
+                className="inline-flex cursor-default text-gray-400 opacity-60"
+                aria-label="LinkedIn em breve"
+                title="Em breve"
+              >
                 <Linkedin className="h-4 w-4" />
-              </a>
-              <a href="#" className="transition-colors hover:text-green-600" aria-label="Instagram">
+              </span>
+              <a
+                href="https://www.instagram.com/atomtechsolar/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition-colors hover:text-green-600"
+                aria-label="Instagram Atom Tech Solar"
+              >
                 <Instagram className="h-4 w-4" />
               </a>
-              <a href="#" className="transition-colors hover:text-green-600" aria-label="Twitter">
-                <Twitter className="h-4 w-4" />
+              <a
+                href={WHATSAPP_ATOM_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition-colors hover:text-green-600"
+                aria-label="WhatsApp Atom Tech"
+              >
+                <MessageCircle className="h-4 w-4" />
               </a>
             </div>
           </div>
@@ -652,47 +749,24 @@ function SiteFooter() {
               { label: "Resultados", href: "#prova" },
               { label: "Por que funciona", href: "#objeções" },
               { label: "Dúvidas", href: "#duvidas" },
-              { label: "Começar", href: "#cta-final" },
+              { label: "Cadastrar", href: "#cta-final" },
             ]}
-            className="max-[600px]:order-2"
           />
 
           <FooterLinkGroup
-            title="Produto"
+            title="Produtos"
             links={[
-              { label: "Funcionalidades", href: "#" },
-              { label: "Carreiras", href: "#" },
-              { label: "Como funciona", href: "#" },
-              { label: "Contato", href: "#" },
+              { label: "Carregador veicular", href: "#" },
+              { label: "Placas solares", href: "#" },
+              { label: "Sistema de segurança", href: "#" },
+              { label: "Gestão no geral", href: "#" },
             ]}
-            className="max-[600px]:order-3"
           />
-
-          <div className="max-[1060px]:text-center max-[1060px]:mx-auto max-[600px]:col-span-2 max-[600px]:order-4">
-            <h3 className="text-base max-[400px]:text-sm font-semibold">Newsletter</h3>
-            <p className="mt-4 text-sm max-[400px]:text-xs text-gray-500 leading-relaxed">
-              Receba dicas, atualizações da plataforma e estratégias para aumentar suas indicações e ganhos.
-            </p>
-            <form className="mt-5 flex items-center gap-2 max-[1060px]:justify-center">
-              <input
-                type="email"
-                placeholder="Seu e-mail"
-                className="h-11 flex-1 rounded-full border border-green-200 bg-white px-4 text-sm max-[400px]:text-xs text-gray-900 placeholder:text-gray-400 outline-none focus:ring-2 focus:ring-green-500"
-              />
-              <button
-                type="submit"
-                className="inline-flex items-center gap-1 rounded-full bg-green-500 px-5 py-2 text-sm max-[400px]:text-xs font-medium text-white transition hover:bg-green-600"
-              >
-                Inscrever
-                <ArrowRight className="h-4 w-4" />
-              </button>
-            </form>
-          </div>
         </div>
 
-        <div className="mt-12 border-t border-green-200 pt-6 flex flex-col md:flex-row items-center justify-between gap-4 text-sm max-[400px]:text-xs text-gray-500 max-[1060px]:text-center">
-          <p>© 2025 ATOM TECH. Todos os direitos reservados.</p>
-          <div className="flex items-center gap-6 max-[400px]:gap-3">
+        <div className="mt-12 border-t border-green-200 pt-6 flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8 text-sm max-[400px]:text-xs text-gray-500">
+          <p className="text-left">© 2025 ATOM TECH. Todos os direitos reservados.</p>
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 max-[400px]:gap-x-3 text-left">
             <a href="#" className="transition-colors hover:text-green-600">Política de Privacidade</a>
             <a href="#" className="transition-colors hover:text-green-600">Termos de Serviço</a>
             <a href="#" className="transition-colors hover:text-green-600">Segurança</a>
@@ -714,12 +788,15 @@ function FooterLinkGroup({
   className?: string;
 }) {
   return (
-    <div className={`max-[1060px]:text-center max-[1060px]:mx-auto ${className ?? ""}`}>
-      <h3 className="text-base max-[400px]:text-sm font-semibold">{title}</h3>
-      <ul className="mt-4 space-y-3">
+    <div className={`min-w-0 mx-auto w-full max-w-[260px] text-left sm:max-w-[280px] min-[1000px]:max-w-[240px] min-[1280px]:max-w-[260px] ${className ?? ""}`}>
+      <h3 className="text-base max-[400px]:text-sm font-semibold min-[1000px]:text-sm min-[1280px]:text-base">{title}</h3>
+      <ul className="mt-4 space-y-2.5 min-[1000px]:mt-3 min-[1000px]:space-y-2 min-[1280px]:space-y-2.5">
         {links.map((item) => (
           <li key={item.label}>
-            <a href={item.href} className="text-sm max-[400px]:text-xs text-gray-500 transition-colors hover:text-green-600">
+            <a
+              href={item.href}
+              className="text-sm max-[400px]:text-xs text-gray-500 transition-colors hover:text-green-600 min-[1000px]:text-xs min-[1000px]:leading-snug min-[1280px]:text-sm min-[1280px]:leading-normal"
+            >
               {item.label}
             </a>
           </li>
