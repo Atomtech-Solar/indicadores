@@ -25,7 +25,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { AuthLoadingScreen } from "@/components/auth/AuthLoadingScreen";
-import ativoLogoImage from "../../img/Ativo 1.png";
+import { SITE_LOGO_URL } from "@/lib/site-logo";
 import downArrowImage from "../../img/down-arrow.png";
 
 const CELULAR_HERO_URL = "https://i.ibb.co/Lzb68BpJ/Celular-Hero.png";
@@ -92,7 +92,7 @@ function Landing() {
         <div className="max-w-7xl mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center">
             <img
-              src={ativoLogoImage}
+              src={SITE_LOGO_URL}
               alt="ATOM TECH"
               className="h-10 w-auto object-contain"
             />
@@ -146,7 +146,7 @@ function Landing() {
           }`}
         >
           <div className="h-16 px-4 border-b border-border flex items-center justify-between">
-            <img src={ativoLogoImage} alt="ATOM TECH" className="h-9 w-auto object-contain" />
+            <img src={SITE_LOGO_URL} alt="ATOM TECH" className="h-9 w-auto object-contain" />
             <button
               type="button"
               className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-border text-foreground"
@@ -696,7 +696,7 @@ function SiteFooter() {
           <div className="min-w-0 w-full max-w-xl max-[999px]:col-span-2 mx-auto flex flex-col items-center min-[1000px]:max-w-[280px] xl:max-w-[300px]">
             <div className="flex w-full justify-center">
               <img
-                src={ativoLogoImage}
+                src={SITE_LOGO_URL}
                 alt="ATOM TECH"
                 className="h-11 w-auto object-contain min-[1000px]:h-10 xl:h-11"
               />

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { SITE_LOGO_URL } from "@/lib/site-logo";
 
 type Props = {
   message?: string;
@@ -39,7 +40,7 @@ export function AuthLoadingScreen({ message = "Carregando…", active }: Props) 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-[#024b2e] px-6">
       <img
-        src="https://i.ibb.co/pv36YBgf/Ativo-3.png"
+        src={SITE_LOGO_URL}
         alt="ATOM TECH"
         className="h-14 w-auto object-contain mb-8 opacity-95"
       />

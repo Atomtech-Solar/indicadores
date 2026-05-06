@@ -183,6 +183,10 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      admin_delete_indicacao: {
+        Args: { target_id: number };
+        Returns: null;
+      };
       get_admin_dashboard_summary: {
         Args: Record<PropertyKey, never>;
         Returns: {

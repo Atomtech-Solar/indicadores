@@ -69,6 +69,8 @@ function Cadastro() {
       if (!registerResult.success) {
         if (registerResult.status === 429) {
           toast.error("Muitas tentativas em pouco tempo. Aguarde um instante e tente novamente.");
+        } else if (registerResult.status === 409) {
+          toast.error(registerResult.message);
         } else {
           toast.error("Não foi possível concluir o cadastro. Tente novamente.");
         }

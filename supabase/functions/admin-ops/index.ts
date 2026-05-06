@@ -21,6 +21,7 @@ type ActionPayload =
   | { action: "update_indicacao_status"; indicacaoId: number; status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido" }
   | { action: "list_comissoes"; page?: number; limit?: number; search?: string }
   | { action: "list_fotos"; page?: number; limit?: number; search?: string }
+  | { action: "delete_indicacao"; indicacaoId: number }
   | { action: "update_comissao_status"; comissaoId: number; status: "pendente" | "disponivel" | "pago" | "cancelado" }
   | { action: "reports" };
 
@@ -194,6 +195,57 @@ async function listFotos(adminClient: SupabaseClient, params: ListParams) {
   return { items: withUrls, total: count ?? 0, page, limit };
 }
 
+function errorMessageFromUnknown(err: unknown): string {
+  if (err instanceof Error) return err.message || "Erro desconhecido.";
+  if (typeof err === "object" && err !== null && "message" in err) {
+    const m = (err as { message: unknown }).message;
+    if (typeof m === "string" && m.trim()) return m;
+  }
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
+async function deleteIndicacao(adminClient: SupabaseClient, indicacaoId: number): Promise<void> {
+  const { data: row, error: fetchError } = await adminClient
+    .from("indicacoes")
+    .select("id, conta_energia_url, foto_padrao_url")
+    .eq("id", indicacaoId)
+    .maybeSingle();
+
+  if (fetchError) {
+    throw new Error(errorMessageFromUnknown(fetchError));
+  }
+  if (!row?.id) throw new Error("NOT_FOUND");
+
+  const paths = [row.conta_energia_url, row.foto_padrao_url].filter((p): p is string => Boolean(p?.trim()));
+
+  const { error: rpcError } = await adminClient.rpc("admin_delete_indicacao", { target_id: indicacaoId });
+  if (rpcError) {
+    const rpcMsg = errorMessageFromUnknown(rpcError);
+    if (rpcMsg.includes("NOT_FOUND") || rpcMsg.includes("P0001")) {
+      throw new Error("NOT_FOUND");
+    }
+    throw new Error(rpcMsg);
+  }
+
+  if (paths.length > 0) {
+    const { error: storageError } = await adminClient.storage.from("indicacoes-comprovantes").remove(paths);
+    if (storageError) {
+      console.error(
+        JSON.stringify({
+          type: "admin_delete_indicacao_storage_cleanup_failed",
+          indicacaoId,
+          message: storageError.message,
+          createdAt: new Date().toISOString(),
+        }),
+      );
+    }
+  }
+}
+
 async function listIndicacoes(adminClient: SupabaseClient, params: ListParams & { onlyCommissionEligible?: boolean }) {
   const { page, limit, search, from, to } = normalizeListParams(params);
   let query = adminClient
@@ -347,6 +399,15 @@ Deno.serve(async (req: Request) => {
         return jsonResponse(req, 200, { data: await listComissoes(adminClient, payload) });
       case "list_fotos":
         return jsonResponse(req, 200, { data: await listFotos(adminClient, payload) });
+      case "delete_indicacao": {
+        const rawId = (payload as unknown as { indicacaoId?: unknown }).indicacaoId;
+        const indicacaoId = typeof rawId === "number" && Number.isFinite(rawId) ? rawId : Number(rawId);
+        if (!Number.isFinite(indicacaoId) || indicacaoId <= 0) {
+          return jsonResponse(req, 400, { error: "ID da indicação inválido." });
+        }
+        await deleteIndicacao(adminClient, indicacaoId);
+        return jsonResponse(req, 200, { message: "Indicação excluída com sucesso." });
+      }
       case "update_comissao_status": {
         const patch: Record<string, unknown> = { status: payload.status };
         if (payload.status === "pago") {
@@ -361,9 +422,24 @@ Deno.serve(async (req: Request) => {
       case "reports":
         return jsonResponse(req, 200, { data: await getReports(adminClient) });
       default:
-        return jsonResponse(req, 400, { error: "invalid_action" });
+        return jsonResponse(req, 400, {
+          error:
+            "Esta ação não existe no servidor. Faça o deploy da função admin-ops com o código atual do repositório.",
+        });
     }
-  } catch {
-    return jsonResponse(req, 400, { error: "Não foi possível concluir a solicitação." });
+  } catch (err) {
+    const message = errorMessageFromUnknown(err);
+    console.error(JSON.stringify({ type: "admin_ops_error", message, createdAt: new Date().toISOString() }));
+    if (message === "FORBIDDEN" || message.includes("FORBIDDEN")) {
+      return jsonResponse(req, 403, { error: "Sem permissão para esta operação." });
+    }
+    if (message === "NOT_FOUND" || message.includes("NOT_FOUND")) {
+      return jsonResponse(req, 404, { error: "Indicação não encontrada." });
+    }
+    const safe =
+      message.length > 0 && message.length < 280
+        ? message
+        : "Não foi possível concluir a solicitação.";
+    return jsonResponse(req, 400, { error: safe });
   }
 });

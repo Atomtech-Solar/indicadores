@@ -18,6 +18,9 @@ import {
   MoreVertical,
   Menu,
   X,
+  Trash2,
+  AlertTriangle,
+  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { RequireAdmin } from "@/components/auth/RequireAdmin";
@@ -26,7 +29,16 @@ import { formatBRL, formatDate } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { callAdminOps, callAdminOpsMutation, setCommission } from "@/lib/admin-edge";
+import { SITE_LOGO_URL } from "@/lib/site-logo";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -45,6 +57,7 @@ function AdminRouteComponent() {
   const [fotosSearch, setFotosSearch] = useState("");
   const [fotosPage, setFotosPage] = useState(1);
   const [overviewComissoesPage, setOverviewComissoesPage] = useState(1);
+  const [overviewPropostasNpPage, setOverviewPropostasNpPage] = useState(1);
   const [comissoesDefinicaoSearch, setComissoesDefinicaoSearch] = useState("");
   const [comissoesDefinicaoPage, setComissoesDefinicaoPage] = useState(1);
   const [comissoesHistoricoSearch, setComissoesHistoricoSearch] = useState("");
@@ -74,6 +87,12 @@ function AdminRouteComponent() {
     tipo_projeto: string | null;
     observacoes: string | null;
     created_at: string;
+  } | null>(null);
+  const [deleteIndicacaoPrompt, setDeleteIndicacaoPrompt] = useState<{ id: number; nome_indicado: string } | null>(null);
+  const [adminFeedbackModal, setAdminFeedbackModal] = useState<{
+    variant: "success" | "error";
+    title: string;
+    message: string;
   } | null>(null);
   const shouldLoadOverview = activeTab === "overview";
   const shouldLoadUsuarios = activeTab === "usuarios";
@@ -126,6 +145,15 @@ function AdminRouteComponent() {
           indicacao_nome: string;
           valor: number;
           data_pagamento: string;
+        }[];
+        propostasNaoPagasLista: {
+          id: number;
+          usuario_nome: string;
+          indicacao_nome: string;
+          valor: number;
+          status: string;
+          valor_projeto: number | null;
+          definido_em: string;
         }[];
         growthSeries: { label: string; faturamento: number; comissoesPagas: number }[];
         funnel: { enviado: number; analise: number; negociacao: number; fechado: number; perdido: number };
@@ -273,6 +301,17 @@ function AdminRouteComponent() {
     return (overview?.comissoesPagasLista ?? []).slice(start, start + 10);
   }, [overview?.comissoesPagasLista, overviewComissoesPage]);
 
+  const overviewPropostasNpTotalPages = Math.max(1, Math.ceil((overview?.propostasNaoPagasLista?.length ?? 0) / 10));
+  const overviewPropostasNpPaginadas = useMemo(() => {
+    const start = (overviewPropostasNpPage - 1) * 10;
+    return (overview?.propostasNaoPagasLista ?? []).slice(start, start + 10);
+  }, [overview?.propostasNaoPagasLista, overviewPropostasNpPage]);
+
+  const totalPropostasNaoPagasValor = useMemo(
+    () => (overview?.propostasNaoPagasLista ?? []).reduce((acc, p) => acc + Number(p.valor ?? 0), 0),
+    [overview?.propostasNaoPagasLista],
+  );
+
   const { data: reports, isLoading: loadingReports } = useQuery({
     queryKey: ["admin-reports"],
     enabled: shouldLoadReports,
@@ -341,6 +380,37 @@ function AdminRouteComponent() {
     onError: () => toast.error("Não foi possível atualizar a indicação."),
   });
 
+  const deleteIndicacaoMutation = useMutation({
+    mutationFn: (indicacaoId: number) => callAdminOpsMutation({ action: "delete_indicacao", indicacaoId }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin-fotos"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes-elegiveis"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-comissoes"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-reports"] });
+      if (shouldLoadOverview) {
+        await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
+      }
+      setZoomedFotoUrl(null);
+      setAvaliacaoModal(null);
+      setDeleteIndicacaoPrompt(null);
+      setAdminFeedbackModal({
+        variant: "success",
+        title: "Projeto excluído",
+        message:
+          "A indicação foi removida do banco. Ela some na aba Status, em Projetos e na dashboard do indicador (comissões vinculadas também são apagadas).",
+      });
+    },
+    onError: (err: Error) => {
+      setDeleteIndicacaoPrompt(null);
+      setAdminFeedbackModal({
+        variant: "error",
+        title: "Não foi possível excluir",
+        message: err.message || "Tente novamente em instantes. Se o erro continuar, confira o deploy da função admin-ops e a migration de permissão DELETE em indicacoes.",
+      });
+    },
+  });
+
   const updateComissaoMutation = useMutation({
     mutationFn: ({ comissaoId, status }: { comissaoId: number; status: "pendente" | "disponivel" | "pago" | "cancelado" }) =>
       callAdminOpsMutation({ action: "update_comissao_status", comissaoId, status }),
@@ -401,7 +471,7 @@ function AdminRouteComponent() {
     () => [
       { key: "overview", label: "Overview", icon: LayoutDashboard },
       { key: "usuarios", label: "Usuários", icon: Users },
-      { key: "fotos", label: "Avaliações", icon: ImageIcon },
+      { key: "fotos", label: "Projetos", icon: ImageIcon },
       { key: "indicacoes", label: "Status", icon: TrendingUp },
       { key: "comissoes", label: "Comissões", icon: Wallet },
       { key: "relatorios", label: "Relatórios", icon: BarChart3 },
@@ -414,6 +484,12 @@ function AdminRouteComponent() {
     if (status === "enviado") return "recebido";
     return status;
   };
+
+  const formatPropostaComissaoStatusLabel = (status: string) => {
+    if (status === "pendente") return "Pendente";
+    if (status === "disponivel") return "Disponível";
+    return status;
+  };
   useEffect(() => {
     if (usuariosPage > usuariosTotalPages) setUsuariosPage(usuariosTotalPages);
     if (indicacoesPage > indicacoesTotalPages) setIndicacoesPage(indicacoesTotalPages);
@@ -421,6 +497,7 @@ function AdminRouteComponent() {
     if (comissoesDefinicaoPage > comissoesDefinicaoTotalPages) setComissoesDefinicaoPage(comissoesDefinicaoTotalPages);
     if (comissoesHistoricoPage > comissoesHistoricoTotalPages) setComissoesHistoricoPage(comissoesHistoricoTotalPages);
     if (overviewComissoesPage > overviewComissoesTotalPages) setOverviewComissoesPage(overviewComissoesTotalPages);
+    if (overviewPropostasNpPage > overviewPropostasNpTotalPages) setOverviewPropostasNpPage(overviewPropostasNpTotalPages);
   }, [
     usuariosPage,
     usuariosTotalPages,
@@ -434,6 +511,8 @@ function AdminRouteComponent() {
     comissoesHistoricoTotalPages,
     overviewComissoesPage,
     overviewComissoesTotalPages,
+    overviewPropostasNpPage,
+    overviewPropostasNpTotalPages,
   ]);
 
   return (
@@ -443,7 +522,7 @@ function AdminRouteComponent() {
           <div className="px-6 py-5 border-b border-[#04653f]">
             <Link to="/" className="flex items-center justify-center">
               <img
-                src="https://i.ibb.co/pv36YBgf/Ativo-3.png"
+                src={SITE_LOGO_URL}
                 alt="ATOM TECH"
                 className="h-16 w-auto object-contain"
               />
@@ -486,7 +565,7 @@ function AdminRouteComponent() {
           >
             <div className="h-16 px-4 border-b border-[#04653f] flex items-center justify-between">
               <img
-                src="https://i.ibb.co/pv36YBgf/Ativo-3.png"
+                src={SITE_LOGO_URL}
                 alt="ATOM TECH"
                 className="h-10 w-auto object-contain"
               />
@@ -579,6 +658,130 @@ function AdminRouteComponent() {
                   />
                 </div>
                 {loadingOverview && <p className="text-sm text-zinc-500">Carregando métricas...</p>}
+
+                <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
+                  <div className="px-5 py-4 border-b border-zinc-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                      <h3 className="text-lg font-semibold text-zinc-900">Propostas não pagas</h3>
+                      <p className="text-sm text-zinc-600">
+                        Comissões já definidas (status <span className="font-medium text-amber-800">pendente</span> ou{" "}
+                        <span className="font-medium text-sky-800">disponível</span>), ainda sem pagamento — até 50 mais
+                        recentes.
+                      </p>
+                    </div>
+                    <p className="text-sm font-semibold text-amber-800">
+                      Total em aberto: {formatBRL(totalPropostasNaoPagasValor)}
+                    </p>
+                  </div>
+                  <div className="max-[700px]:hidden overflow-x-auto">
+                    <table className="w-full text-sm min-w-[800px]">
+                      <thead>
+                        <tr className="text-left border-b border-zinc-200 bg-zinc-50">
+                          <th className="px-5 py-3 font-medium text-zinc-700">Indicador</th>
+                          <th className="px-5 py-3 font-medium text-zinc-700">Indicação</th>
+                          <th className="px-5 py-3 font-medium text-zinc-700">Comissão</th>
+                          <th className="px-5 py-3 font-medium text-zinc-700">Projeto</th>
+                          <th className="px-5 py-3 font-medium text-zinc-700">Status</th>
+                          <th className="px-5 py-3 font-medium text-zinc-700">Definido em</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-100">
+                        {loadingOverview && (
+                          <tr>
+                            <td colSpan={6} className="px-5 py-6 text-center text-zinc-500">
+                              Carregando propostas...
+                            </td>
+                          </tr>
+                        )}
+                        {!loadingOverview && (overview?.propostasNaoPagasLista?.length ?? 0) === 0 && (
+                          <tr>
+                            <td colSpan={6} className="px-5 py-6 text-center text-zinc-500">
+                              Nenhuma proposta definida aguardando pagamento.
+                            </td>
+                          </tr>
+                        )}
+                        {!loadingOverview &&
+                          overviewPropostasNpPaginadas.map((p) => (
+                            <tr key={p.id}>
+                              <td className="px-5 py-3 font-medium text-zinc-900">{p.usuario_nome}</td>
+                              <td className="px-5 py-3 text-zinc-700">{p.indicacao_nome}</td>
+                              <td className="px-5 py-3 font-semibold text-amber-800">{formatBRL(Number(p.valor))}</td>
+                              <td className="px-5 py-3 text-zinc-700">
+                                {p.valor_projeto != null && Number(p.valor_projeto) > 0
+                                  ? formatBRL(Number(p.valor_projeto))
+                                  : "—"}
+                              </td>
+                              <td className="px-5 py-3 text-zinc-700">{formatPropostaComissaoStatusLabel(p.status)}</td>
+                              <td className="px-5 py-3 text-zinc-600">{formatDate(p.definido_em)}</td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="hidden max-[700px]:grid gap-3 p-4">
+                    {loadingOverview && (
+                      <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+                        Carregando propostas...
+                      </div>
+                    )}
+                    {!loadingOverview && overviewPropostasNpPaginadas.length === 0 && (
+                      <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+                        Nenhuma proposta definida aguardando pagamento.
+                      </div>
+                    )}
+                    {!loadingOverview &&
+                      overviewPropostasNpPaginadas.map((p) => (
+                        <div key={`mob-np-${p.id}`} className="rounded-xl border border-zinc-200 bg-white p-4">
+                          <p className="text-sm font-semibold text-zinc-900">{p.usuario_nome}</p>
+                          <p className="mt-1 text-sm text-zinc-700">{p.indicacao_nome}</p>
+                          <div className="mt-2 grid gap-1 text-sm text-zinc-700">
+                            <p>
+                              <span className="font-medium text-zinc-900">Comissão:</span>{" "}
+                              <span className="font-semibold text-amber-800">{formatBRL(Number(p.valor))}</span>
+                            </p>
+                            <p>
+                              <span className="font-medium text-zinc-900">Projeto:</span>{" "}
+                              {p.valor_projeto != null && Number(p.valor_projeto) > 0
+                                ? formatBRL(Number(p.valor_projeto))
+                                : "—"}
+                            </p>
+                            <p>
+                              <span className="font-medium text-zinc-900">Status:</span>{" "}
+                              {formatPropostaComissaoStatusLabel(p.status)}
+                            </p>
+                            <p className="text-xs text-zinc-600">Definido em {formatDate(p.definido_em)}</p>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                  {(overview?.propostasNaoPagasLista?.length ?? 0) > 0 && (
+                    <div className="flex items-center justify-between border-t border-zinc-200 px-5 py-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-8 px-3 text-xs"
+                        onClick={() => setOverviewPropostasNpPage((pg) => Math.max(1, pg - 1))}
+                        disabled={overviewPropostasNpPage === 1}
+                      >
+                        Anterior
+                      </Button>
+                      <p className="text-sm font-medium text-zinc-700">
+                        {overviewPropostasNpPage}/{overviewPropostasNpTotalPages}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-8 px-3 text-xs"
+                        onClick={() =>
+                          setOverviewPropostasNpPage((pg) => Math.min(overviewPropostasNpTotalPages, pg + 1))
+                        }
+                        disabled={overviewPropostasNpPage === overviewPropostasNpTotalPages}
+                      >
+                        Próxima
+                      </Button>
+                    </div>
+                  )}
+                </section>
 
                 <section className="rounded-2xl border border-zinc-200 bg-white shadow-sm overflow-hidden">
                   <div className="px-5 py-4 border-b border-zinc-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
@@ -753,11 +956,26 @@ function AdminRouteComponent() {
                           <td colSpan={6} className="px-5 py-6 text-center text-zinc-500">Nenhum usuário encontrado para os filtros.</td>
                         </tr>
                       )}
-                      {usuarios.map((u) => (
+                      {usuarios.map((u) => {
+                        const waUserLink = whatsappHref(u.whatsapp);
+                        return (
                         <tr key={u.usuario_id} className={u.is_disabled ? "bg-rose-50/70" : undefined}>
                           <td className="px-5 py-3">{u.nome}</td>
                           <td className="px-5 py-3">{u.email}</td>
-                          <td className="px-5 py-3">{u.whatsapp}</td>
+                          <td className="px-5 py-3">
+                            {waUserLink ? (
+                              <a
+                                href={waUserLink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-medium text-emerald-700 hover:text-emerald-900 hover:underline"
+                              >
+                                {u.whatsapp}
+                              </a>
+                            ) : (
+                              u.whatsapp
+                            )}
+                          </td>
                           <td className="px-5 py-3">
                             <div className="flex items-center gap-2">
                               <span>{u.role}</span>
@@ -789,7 +1007,8 @@ function AdminRouteComponent() {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -805,12 +1024,28 @@ function AdminRouteComponent() {
                     </div>
                   )}
                   {!loadingUsuarios &&
-                    usuarios.map((u) => (
+                    usuarios.map((u) => {
+                      const waUserLinkMob = whatsappHref(u.whatsapp);
+                      return (
                       <div key={`mob-user-${u.usuario_id}`} className={`rounded-xl border p-4 ${u.is_disabled ? "border-rose-200 bg-rose-50/50" : "border-zinc-200 bg-white"}`}>
                         <p className="text-sm font-semibold text-zinc-900">{u.nome}</p>
                         <p className="mt-1 text-xs text-zinc-600">{u.email}</p>
                         <div className="mt-2 space-y-1 text-sm text-zinc-700">
-                          <p><span className="font-medium text-zinc-900">WhatsApp:</span> {u.whatsapp}</p>
+                          <p>
+                            <span className="font-medium text-zinc-900">WhatsApp:</span>{" "}
+                            {waUserLinkMob ? (
+                              <a
+                                href={waUserLinkMob}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-medium text-emerald-700 hover:text-emerald-900 hover:underline"
+                              >
+                                {u.whatsapp}
+                              </a>
+                            ) : (
+                              u.whatsapp
+                            )}
+                          </p>
                           <p>
                             <span className="font-medium text-zinc-900">Role:</span> {u.role}
                             {u.is_disabled && (
@@ -839,7 +1074,8 @@ function AdminRouteComponent() {
                           </button>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                 </div>
                 {(usuariosResp?.total ?? 0) > 0 && (
                   <div className="flex items-center justify-between border-t border-zinc-200 px-5 py-3">
@@ -1242,9 +1478,10 @@ function AdminRouteComponent() {
             {activeTab === "fotos" && (
               <section className="space-y-4">
                 <div className="rounded-2xl border border-zinc-200 bg-white px-5 py-4">
-                  <h3 className="text-lg font-semibold text-zinc-900">Fotos anexadas pelos indicadores</h3>
+                  <h3 className="text-lg font-semibold text-zinc-900">Projetos com anexos</h3>
                   <p className="text-sm text-zinc-600 mt-1">
-                    Conta de energia e foto do padrão enviadas no cadastro da indicação.
+                    Indicações que enviaram conta de energia e/ou foto do padrão. Excluir remove o registro no Supabase
+                    (comissões vinculadas são removidas) e some na aba Status e na dashboard do indicador.
                   </p>
                   <div className="mt-3">
                     <Input
@@ -1262,7 +1499,7 @@ function AdminRouteComponent() {
                 <div className="grid gap-4 md:grid-cols-2">
                   {loadingFotos && (
                     <div className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-500">
-                      Carregando fotos...
+                      Carregando projetos...
                     </div>
                   )}
                   {!loadingFotos &&
@@ -1315,7 +1552,7 @@ function AdminRouteComponent() {
                             )}
                           </div>
                         </div>
-                        <div className="mt-3 flex justify-end">
+                        <div className="mt-3 flex flex-wrap justify-end gap-2">
                           <Button
                             type="button"
                             variant="outline"
@@ -1334,12 +1571,22 @@ function AdminRouteComponent() {
                           >
                             Ver mais
                           </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-8 px-3 text-xs border-rose-200 text-rose-700 hover:bg-rose-50"
+                            disabled={deleteIndicacaoMutation.isPending}
+                            onClick={() => setDeleteIndicacaoPrompt({ id: f.id, nome_indicado: f.nome_indicado })}
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                            Excluir
+                          </Button>
                         </div>
                       </div>
                     ))}
                   {!loadingFotos && fotos.length === 0 && (
                     <div className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-500">
-                      Nenhuma foto anexada encontrada para o filtro informado.
+                      Nenhum projeto com anexos encontrado para o filtro informado.
                     </div>
                   )}
                 </div>
@@ -1607,7 +1854,7 @@ function AdminRouteComponent() {
       {avaliacaoModal && (
         <div className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[1px] p-4 grid place-items-center">
           <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5">
-            <h3 className="text-lg font-semibold text-zinc-900">Detalhes da avaliação</h3>
+            <h3 className="text-lg font-semibold text-zinc-900">Detalhes do projeto</h3>
             <div className="mt-3 space-y-2 text-sm text-zinc-700">
               <p><span className="font-medium text-zinc-900">Indicador:</span> {avaliacaoModal.usuario_nome}</p>
               <p><span className="font-medium text-zinc-900">Indicado:</span> {avaliacaoModal.nome_indicado}</p>
@@ -1616,27 +1863,134 @@ function AdminRouteComponent() {
               <p><span className="font-medium text-zinc-900">Observações:</span> {avaliacaoModal.observacoes?.trim() || "Sem observações."}</p>
               <p><span className="font-medium text-zinc-900">Data:</span> {formatDate(avaliacaoModal.created_at)}</p>
             </div>
-            <div className="mt-5 flex items-center justify-end gap-2">
-              <Button type="button" variant="secondary" onClick={() => setAvaliacaoModal(null)}>
-                Fechar
-              </Button>
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
               <Button
-                asChild
                 type="button"
-                disabled={!whatsappHref(avaliacaoModal.whatsapp)}
+                variant="outline"
+                className="border-rose-200 text-rose-700 hover:bg-rose-50"
+                disabled={deleteIndicacaoMutation.isPending}
+                onClick={() => {
+                  const target = {
+                    id: avaliacaoModal.id,
+                    nome_indicado: avaliacaoModal.nome_indicado,
+                  };
+                  setAvaliacaoModal(null);
+                  setDeleteIndicacaoPrompt(target);
+                }}
               >
-                <a
-                  href={whatsappHref(avaliacaoModal.whatsapp) ?? "#"}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Chamar no WhatsApp
-                </a>
+                <Trash2 className="h-4 w-4 mr-2" />
+                Excluir projeto
               </Button>
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button type="button" variant="secondary" onClick={() => setAvaliacaoModal(null)}>
+                  Fechar
+                </Button>
+                <Button
+                  asChild
+                  type="button"
+                  disabled={!whatsappHref(avaliacaoModal.whatsapp)}
+                >
+                  <a
+                    href={whatsappHref(avaliacaoModal.whatsapp) ?? "#"}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Chamar no WhatsApp
+                  </a>
+                </Button>
+              </div>
             </div>
           </div>
         </div>
       )}
+
+      <Dialog
+        open={deleteIndicacaoPrompt !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteIndicacaoPrompt(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md rounded-2xl border-zinc-200">
+          <DialogHeader>
+            <DialogTitle className="text-zinc-900 flex items-center gap-2 text-left">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+                <AlertTriangle className="h-4 w-4" />
+              </span>
+              Excluir este projeto?
+            </DialogTitle>
+            <DialogDescription asChild>
+              <div className="text-left text-sm text-zinc-600 pt-1 space-y-2">
+                <p>
+                  Você está prestes a apagar a indicação de{" "}
+                  <strong className="text-zinc-900">{deleteIndicacaoPrompt?.nome_indicado}</strong>.
+                </p>
+                <p>
+                  Isso remove o registro no Supabase, tenta apagar anexos no storage e{" "}
+                  <strong className="text-zinc-900">exclui comissões ligadas</strong>. Não dá para desfazer.
+                </p>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="secondary"
+              className="rounded-xl"
+              disabled={deleteIndicacaoMutation.isPending}
+              onClick={() => setDeleteIndicacaoPrompt(null)}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="rounded-xl"
+              disabled={deleteIndicacaoMutation.isPending}
+              onClick={() => {
+                if (deleteIndicacaoPrompt) {
+                  deleteIndicacaoMutation.mutate(deleteIndicacaoPrompt.id);
+                }
+              }}
+            >
+              {deleteIndicacaoMutation.isPending ? "Excluindo…" : "Excluir definitivamente"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={adminFeedbackModal !== null}
+        onOpenChange={(open) => {
+          if (!open) setAdminFeedbackModal(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md rounded-2xl border-zinc-200">
+          <DialogHeader>
+            <DialogTitle
+              className={`flex items-center gap-2 text-left ${
+                adminFeedbackModal?.variant === "success" ? "text-emerald-900" : "text-rose-900"
+              }`}
+            >
+              {adminFeedbackModal?.variant === "success" ? (
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                  <CheckCircle2 className="h-4 w-4" />
+                </span>
+              ) : (
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-700">
+                  <AlertTriangle className="h-4 w-4" />
+                </span>
+              )}
+              {adminFeedbackModal?.title}
+            </DialogTitle>
+            <DialogDescription className="text-left text-zinc-600 pt-1">{adminFeedbackModal?.message}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" className="rounded-xl w-full sm:w-auto" onClick={() => setAdminFeedbackModal(null)}>
+              Entendi
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </RequireAdmin>
   );
 }

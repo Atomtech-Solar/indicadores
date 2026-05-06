@@ -39,6 +39,8 @@ import { fetchUsuarioRow } from "@/lib/usuario-profile";
 import type { Tables } from "@/lib/supabase/database.types";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 
+const DASHBOARD_SIDEBAR_LOGO_URL = "https://i.ibb.co/kgsNzg3v/Documento-de-Bryan-Henrique.png";
+
 export const Route = createFileRoute("/dashboard")({
   head: () => ({ meta: [{ title: "Dashboard — Atom Tech" }] }),
   component: DashboardRouteComponent,
@@ -577,7 +579,7 @@ function Dashboard() {
         <div className="px-6 py-5 border-b border-[#04653f]">
           <Link to="/" className="flex items-center justify-center">
             <img
-              src="https://i.ibb.co/pv36YBgf/Ativo-3.png"
+              src={DASHBOARD_SIDEBAR_LOGO_URL}
               alt="ATOM TECH"
               className="h-16 w-auto object-contain"
             />
@@ -639,7 +641,7 @@ function Dashboard() {
         >
           <div className="h-16 px-4 border-b border-[#04653f] flex items-center justify-between">
             <img
-              src="https://i.ibb.co/pv36YBgf/Ativo-3.png"
+              src={DASHBOARD_SIDEBAR_LOGO_URL}
               alt="ATOM TECH"
               className="h-10 w-auto object-contain"
             />

@@ -8,15 +8,6 @@ type RegisterPayload = {
   captchaToken: string;
 };
 
-type RateLimitResult = {
-  allowed: boolean;
-  emailAttemptsLastMinute: number;
-  ipAttemptsLastMinute: number;
-};
-
-const EMAIL_LIMIT_PER_MINUTE = 3;
-const IP_LIMIT_PER_MINUTE = 5;
-
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -33,25 +24,6 @@ function jsonResponse(status: number, body: Record<string, unknown>): Response {
   });
 }
 
-function getClientIP(req: Request): string {
-  const xForwardedFor = req.headers.get("x-forwarded-for");
-  if (xForwardedFor) {
-    return xForwardedFor.split(",")[0]?.trim() || "unknown";
-  }
-
-  const cfConnectingIp = req.headers.get("cf-connecting-ip");
-  if (cfConnectingIp) {
-    return cfConnectingIp.trim();
-  }
-
-  const xRealIp = req.headers.get("x-real-ip");
-  if (xRealIp) {
-    return xRealIp.trim();
-  }
-
-  return "unknown";
-}
-
 async function validateCaptcha(token: string): Promise<boolean> {
   if (!token || token.trim().length < 10) {
     return false;
@@ -64,89 +36,60 @@ async function validateCaptcha(token: string): Promise<boolean> {
   return true;
 }
 
-async function applyProgressiveDelay(input: { emailAttemptsLastMinute: number; ipAttemptsLastMinute: number }): Promise<void> {
-  const attemptsLastMinute = Math.max(input.emailAttemptsLastMinute, input.ipAttemptsLastMinute);
-  if (attemptsLastMinute <= 2) return;
-
-  // Delay progressivo para reduzir brute-force e spam.
-  const delayMs = Math.min(500 * (attemptsLastMinute - 2), 4000);
-  await new Promise((resolve) => setTimeout(resolve, delayMs));
-}
-
-function logSuspiciousAttempt(input: {
-  ip: string;
-  email: string;
-  reason: string;
-  emailAttemptsLastMinute: number;
-  ipAttemptsLastMinute: number;
-}): void {
-  console.warn(
-    JSON.stringify({
-      type: "suspicious_register_attempt",
-      ip: input.ip,
-      email: input.email,
-      reason: input.reason,
-      emailAttemptsLastMinute: input.emailAttemptsLastMinute,
-      ipAttemptsLastMinute: input.ipAttemptsLastMinute,
-      createdAt: new Date().toISOString(),
-    }),
-  );
-}
-
-async function checkRateLimitWithCount(
-  supabase: SupabaseClient,
-  input: { email: string; ip: string },
-): Promise<RateLimitResult> {
-  const oneMinuteAgoIso = new Date(Date.now() - 60_000).toISOString();
-
-  const { error: insertError } = await supabase.from("otp_rate_limits").insert({
-    email: input.email,
-    ip: input.ip,
-  });
-
-  if (insertError) {
-    throw new Error("REGISTER_RATE_LIMIT_INSERT_FAILED");
-  }
-
-  const [{ count: emailCount, error: emailCountError }, { count: ipCount, error: ipCountError }] = await Promise.all([
-    supabase
-      .from("otp_rate_limits")
-      .select("email", { count: "exact", head: true })
-      .eq("email", input.email)
-      .gte("created_at", oneMinuteAgoIso),
-    supabase
-      .from("otp_rate_limits")
-      .select("ip", { count: "exact", head: true })
-      .eq("ip", input.ip)
-      .gte("created_at", oneMinuteAgoIso),
-  ]);
-
-  if (emailCountError || ipCountError) {
-    throw new Error("REGISTER_RATE_LIMIT_COUNT_FAILED");
-  }
-
-  const emailAttemptsLastMinute = emailCount ?? 0;
-  const ipAttemptsLastMinute = ipCount ?? 0;
-  const hasKnownIp = input.ip !== "unknown";
-
-  return {
-    // Regra principal por e-mail; IP atua como proteção extra somente quando disponível.
-    allowed:
-      emailAttemptsLastMinute <= EMAIL_LIMIT_PER_MINUTE &&
-      (!hasKnownIp || ipAttemptsLastMinute <= IP_LIMIT_PER_MINUTE),
-    emailAttemptsLastMinute,
-    ipAttemptsLastMinute,
-  };
-}
-
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-async function createUser(
+function isDuplicateUserError(error: { message?: string; code?: string } | null): boolean {
+  if (!error) return false;
+  const code = (error.code ?? "").toLowerCase();
+  if (code === "email_exists" || code === "user_already_exists") {
+    return true;
+  }
+  const msg = (error.message ?? "").toLowerCase();
+  return (
+    msg.includes("already been registered") ||
+    msg.includes("already registered") ||
+    msg.includes("user already exists") ||
+    msg.includes("duplicate") ||
+    msg.includes("email address is already")
+  );
+}
+
+async function findAuthUserByEmail(
+  supabase: SupabaseClient,
+  email: string,
+): Promise<{ id: string; email?: string; email_confirmed_at?: string | null } | null> {
+  const target = normalizeEmail(email);
+  let page = 1;
+  const perPage = 1000;
+  const maxPages = 100;
+
+  while (page <= maxPages) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage });
+    if (error) {
+      console.error(
+        JSON.stringify({
+          type: "register_user_list_users_error",
+          message: error.message,
+          createdAt: new Date().toISOString(),
+        }),
+      );
+      return null;
+    }
+    const users = data.users ?? [];
+    const found = users.find((u) => normalizeEmail(u.email ?? "") === target);
+    if (found?.id) return { id: found.id, email: found.email, email_confirmed_at: found.email_confirmed_at };
+    if (users.length < perPage) break;
+    page += 1;
+  }
+  return null;
+}
+
+async function registerOrResumePendingUser(
   supabase: SupabaseClient,
   input: { email: string; password: string; nome: string; whatsapp: string },
-): Promise<string> {
+): Promise<{ userId: string; resumed: boolean }> {
   const { data, error } = await supabase.auth.admin.createUser({
     email: input.email,
     password: input.password,
@@ -157,10 +100,36 @@ async function createUser(
     },
   });
 
-  if (error || !data.user?.id) {
+  if (!error && data.user?.id) {
+    return { userId: data.user.id, resumed: false };
+  }
+
+  if (!isDuplicateUserError(error)) {
     throw new Error("CREATE_USER_FAILED");
   }
-  return data.user.id;
+
+  const existing = await findAuthUserByEmail(supabase, input.email);
+  if (!existing?.id) {
+    throw new Error("CREATE_USER_FAILED");
+  }
+
+  if (existing.email_confirmed_at) {
+    throw new Error("ACCOUNT_ALREADY_CONFIRMED");
+  }
+
+  const { error: updateError } = await supabase.auth.admin.updateUserById(existing.id, {
+    password: input.password,
+    user_metadata: {
+      nome: input.nome,
+      whatsapp: input.whatsapp,
+    },
+  });
+
+  if (updateError) {
+    throw new Error("UPDATE_PENDING_USER_FAILED");
+  }
+
+  return { userId: existing.id, resumed: true };
 }
 
 async function upsertUsuarioProfile(
@@ -196,7 +165,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     const supabase = createClient(supabaseUrl, serviceRoleKey);
-    const ip = getClientIP(req);
 
     const payload = (await req.json()) as Partial<RegisterPayload>;
     const email = normalizeEmail(payload.email ?? "");
@@ -205,44 +173,37 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const whatsapp = payload.whatsapp?.trim();
     const captchaToken = payload.captchaToken;
 
-    const rateLimit = await checkRateLimitWithCount(supabase, { email: email || "invalid", ip });
-    await applyProgressiveDelay(rateLimit);
-
-    if (!rateLimit.allowed) {
-      logSuspiciousAttempt({
-        ip,
-        email: email || "invalid",
-        reason: "rate_limit_exceeded",
-        emailAttemptsLastMinute: rateLimit.emailAttemptsLastMinute,
-        ipAttemptsLastMinute: rateLimit.ipAttemptsLastMinute,
-      });
-      return jsonResponse(429, { error: "Não foi possível concluir a solicitação." });
-    }
-
     if (!email || !email.includes("@") || !password || password.length < 6 || !nome || !whatsapp || !captchaToken) {
-      logSuspiciousAttempt({
-        ip,
-        email: email || "invalid",
-        reason: "invalid_payload",
-        emailAttemptsLastMinute: rateLimit.emailAttemptsLastMinute,
-        ipAttemptsLastMinute: rateLimit.ipAttemptsLastMinute,
-      });
       return jsonResponse(400, { error: "Não foi possível concluir a solicitação." });
     }
 
     const isCaptchaValid = await validateCaptcha(captchaToken);
     if (!isCaptchaValid) {
-      logSuspiciousAttempt({
-        ip,
-        email,
-        reason: "invalid_captcha",
-        emailAttemptsLastMinute: rateLimit.emailAttemptsLastMinute,
-        ipAttemptsLastMinute: rateLimit.ipAttemptsLastMinute,
-      });
       return jsonResponse(400, { error: "Não foi possível concluir a solicitação." });
     }
 
-    const userId = await createUser(supabase, { email, password, nome, whatsapp });
+    let userId: string;
+    try {
+      const result = await registerOrResumePendingUser(supabase, { email, password, nome, whatsapp });
+      userId = result.userId;
+      if (result.resumed) {
+        console.log(
+          JSON.stringify({
+            type: "register_user_resumed_pending",
+            email,
+            createdAt: new Date().toISOString(),
+          }),
+        );
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message === "ACCOUNT_ALREADY_CONFIRMED") {
+        return jsonResponse(409, {
+          error: "Esta conta já está ativa. Use a página Entrar com seu e-mail e senha.",
+        });
+      }
+      throw err;
+    }
+
     await upsertUsuarioProfile(supabase, { userId, nome, whatsapp });
 
     return jsonResponse(200, { message: "Cadastro realizado com sucesso." });
