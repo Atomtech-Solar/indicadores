@@ -90,6 +90,8 @@ export type Database = {
         Row: {
           conta_energia_url: string | null;
           created_at: string;
+          foto_extra_1_url: string | null;
+          foto_extra_2_url: string | null;
           foto_padrao_url: string | null;
           id: number;
           nome_indicado: string;
@@ -107,6 +109,8 @@ export type Database = {
         Insert: {
           conta_energia_url?: string | null;
           created_at?: string;
+          foto_extra_1_url?: string | null;
+          foto_extra_2_url?: string | null;
           foto_padrao_url?: string | null;
           id?: number;
           nome_indicado: string;
@@ -124,6 +128,8 @@ export type Database = {
         Update: {
           conta_energia_url?: string | null;
           created_at?: string;
+          foto_extra_1_url?: string | null;
+          foto_extra_2_url?: string | null;
           foto_padrao_url?: string | null;
           id?: number;
           nome_indicado?: string;

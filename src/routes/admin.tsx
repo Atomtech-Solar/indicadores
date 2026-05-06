@@ -200,6 +200,8 @@ function AdminRouteComponent() {
           observacoes: string | null;
           conta_energia_url: string | null;
           foto_padrao_url: string | null;
+          foto_extra_1_url: string | null;
+          foto_extra_2_url: string | null;
           created_at: string;
         }[];
         total: number;
@@ -1523,34 +1525,35 @@ function AdminRouteComponent() {
                           </p>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
-                          <div className="rounded-lg border border-zinc-200 p-2">
-                            <p className="text-xs font-medium text-zinc-700 mb-2">Conta de energia</p>
-                            {f.conta_energia_url ? (
-                              <button
-                                type="button"
-                                onClick={() => setZoomedFotoUrl(f.conta_energia_url)}
-                                className="block w-full overflow-hidden rounded-md"
-                              >
-                                <img src={f.conta_energia_url} alt="Conta de energia" className="h-36 w-full rounded-md object-cover" />
-                              </button>
-                            ) : (
-                              <div className="h-36 rounded-md bg-zinc-100 grid place-items-center text-xs text-zinc-500">Sem foto</div>
-                            )}
-                          </div>
-                          <div className="rounded-lg border border-zinc-200 p-2">
-                            <p className="text-xs font-medium text-zinc-700 mb-2">Foto do padrão</p>
-                            {f.foto_padrao_url ? (
-                              <button
-                                type="button"
-                                onClick={() => setZoomedFotoUrl(f.foto_padrao_url)}
-                                className="block w-full overflow-hidden rounded-md"
-                              >
-                                <img src={f.foto_padrao_url} alt="Foto do padrão" className="h-36 w-full rounded-md object-cover" />
-                              </button>
-                            ) : (
-                              <div className="h-36 rounded-md bg-zinc-100 grid place-items-center text-xs text-zinc-500">Sem foto</div>
-                            )}
-                          </div>
+                          {(
+                            [
+                              { label: "Conta de energia", url: f.conta_energia_url },
+                              { label: "Padrão elétrico", url: f.foto_padrao_url },
+                              { label: "Foto extra 1", url: f.foto_extra_1_url },
+                              { label: "Foto extra 2", url: f.foto_extra_2_url },
+                            ] as const
+                          ).map((slot) => (
+                            <div key={slot.label} className="rounded-lg border border-zinc-200 p-2">
+                              <p className="text-xs font-medium text-zinc-700 mb-2">{slot.label}</p>
+                              {slot.url ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setZoomedFotoUrl(slot.url)}
+                                  className="block w-full overflow-hidden rounded-md"
+                                >
+                                  <img
+                                    src={slot.url}
+                                    alt={slot.label}
+                                    className="h-36 w-full rounded-md object-cover"
+                                  />
+                                </button>
+                              ) : (
+                                <div className="h-36 rounded-md bg-zinc-100 grid place-items-center text-xs text-zinc-500">
+                                  Sem foto
+                                </div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                         <div className="mt-3 flex flex-wrap justify-end gap-2">
                           <Button

@@ -143,8 +143,13 @@ async function listFotos(adminClient: SupabaseClient, params: ListParams) {
   const { page, limit, search, from, to } = normalizeListParams(params);
   let query = adminClient
       .from("indicacoes")
-      .select("id, usuario_id, nome_indicado, whatsapp, tipo_projeto, observacoes, conta_energia_url, foto_padrao_url, created_at", { count: "exact" })
-      .or("conta_energia_url.not.is.null,foto_padrao_url.not.is.null")
+      .select(
+        "id, usuario_id, nome_indicado, whatsapp, tipo_projeto, observacoes, conta_energia_url, foto_padrao_url, foto_extra_1_url, foto_extra_2_url, created_at",
+        { count: "exact" },
+      )
+      .or(
+        "conta_energia_url.not.is.null,foto_padrao_url.not.is.null,foto_extra_1_url.not.is.null,foto_extra_2_url.not.is.null",
+      )
       .order("created_at", { ascending: false });
 
   if (search) {
@@ -162,7 +167,7 @@ async function listFotos(adminClient: SupabaseClient, params: ListParams) {
   const allPaths = Array.from(
     new Set(
       (indicacoes ?? [])
-        .flatMap((i) => [i.conta_energia_url, i.foto_padrao_url])
+        .flatMap((i) => [i.conta_energia_url, i.foto_padrao_url, i.foto_extra_1_url, i.foto_extra_2_url])
         .filter((p): p is string => Boolean(p)),
     ),
   );
@@ -189,6 +194,8 @@ async function listFotos(adminClient: SupabaseClient, params: ListParams) {
     observacoes: i.observacoes,
     conta_energia_url: i.conta_energia_url ? (signedUrlByPath.get(i.conta_energia_url) ?? null) : null,
     foto_padrao_url: i.foto_padrao_url ? (signedUrlByPath.get(i.foto_padrao_url) ?? null) : null,
+    foto_extra_1_url: i.foto_extra_1_url ? (signedUrlByPath.get(i.foto_extra_1_url) ?? null) : null,
+    foto_extra_2_url: i.foto_extra_2_url ? (signedUrlByPath.get(i.foto_extra_2_url) ?? null) : null,
     created_at: i.created_at,
   }));
 
@@ -211,7 +218,7 @@ function errorMessageFromUnknown(err: unknown): string {
 async function deleteIndicacao(adminClient: SupabaseClient, indicacaoId: number): Promise<void> {
   const { data: row, error: fetchError } = await adminClient
     .from("indicacoes")
-    .select("id, conta_energia_url, foto_padrao_url")
+    .select("id, conta_energia_url, foto_padrao_url, foto_extra_1_url, foto_extra_2_url")
     .eq("id", indicacaoId)
     .maybeSingle();
 
@@ -220,7 +227,12 @@ async function deleteIndicacao(adminClient: SupabaseClient, indicacaoId: number)
   }
   if (!row?.id) throw new Error("NOT_FOUND");
 
-  const paths = [row.conta_energia_url, row.foto_padrao_url].filter((p): p is string => Boolean(p?.trim()));
+  const paths = [
+    row.conta_energia_url,
+    row.foto_padrao_url,
+    row.foto_extra_1_url,
+    row.foto_extra_2_url,
+  ].filter((p): p is string => Boolean(p?.trim()));
 
   const { error: rpcError } = await adminClient.rpc("admin_delete_indicacao", { target_id: indicacaoId });
   if (rpcError) {

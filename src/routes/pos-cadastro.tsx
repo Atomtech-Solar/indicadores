@@ -10,6 +10,7 @@ import { supabase } from "@/lib/supabase/client";
 import { mapTipoToDb, type IndicacaoTipo } from "@/lib/indicacao-domain";
 import { upsertUsuarioProfile, fetchUsuarioRow } from "@/lib/usuario-profile";
 import { RequireAuth } from "@/components/auth/RequireAuth";
+import { IndicacaoLgpdConsentField, IndicacaoPrivacyModal } from "@/components/indicacao-lgpd-consent";
 
 export const Route = createFileRoute("/pos-cadastro")({
   head: () => ({
@@ -35,6 +36,8 @@ function PosCadastro() {
   const [contaEnergiaError, setContaEnergiaError] = useState<string | null>(null);
   const [fotoPadraoFile, setFotoPadraoFile] = useState<File | null>(null);
   const [fotoPadraoError, setFotoPadraoError] = useState<string | null>(null);
+  const [lgpdConsent, setLgpdConsent] = useState(false);
+  const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
 
   const makeUploadId = () => {
     const c = globalThis.crypto as Crypto | undefined;
@@ -131,6 +134,10 @@ function PosCadastro() {
   const submitIndicacao = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.nome || !form.whatsapp) return;
+    if (!lgpdConsent) {
+      toast.error("É necessário aceitar o consentimento e a Política de Privacidade para enviar.");
+      return;
+    }
     createIndicacao.mutate();
   };
 
@@ -200,6 +207,7 @@ function PosCadastro() {
   }
 
   return (
+    <>
     <div className="min-h-screen bg-background grid place-items-center px-6 py-12">
       <div className="w-full max-w-lg">
         <div className="text-center mb-8">
@@ -266,7 +274,10 @@ function PosCadastro() {
               />
             </div>
 
-            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 space-y-1">
+              <p className="text-xs text-emerald-800 leading-relaxed">
+                <span className="font-semibold">Fotos são opcionais</span>; se enviar, ajudam na análise do projeto.
+              </p>
               <p className="text-xs text-emerald-800">
                 Caso não saiba como tirar a foto, vá na aba de tutorial.
               </p>
@@ -274,7 +285,7 @@ function PosCadastro() {
 
             <div>
               <Label htmlFor="pos-conta-energia" className="text-sm font-medium">
-                Suba a foto da conta de energia
+                Foto da conta de energia (opcional)
               </Label>
               <Input
                 id="pos-conta-energia"
@@ -302,7 +313,7 @@ function PosCadastro() {
 
             <div>
               <Label htmlFor="pos-foto-padrao" className="text-sm font-medium">
-                Suba a foto do padrão
+                Foto do padrão (opcional)
               </Label>
               <Input
                 id="pos-foto-padrao"
@@ -328,6 +339,14 @@ function PosCadastro() {
               {fotoPadraoError && <p className="mt-1 text-xs text-rose-600">{fotoPadraoError}</p>}
             </div>
 
+            <IndicacaoLgpdConsentField
+              id="pos-cadastro-lgpd"
+              checked={lgpdConsent}
+              onCheckedChange={setLgpdConsent}
+              onOpenPrivacy={() => setPrivacyModalOpen(true)}
+              disabled={createIndicacao.isPending}
+            />
+
             <Button
               type="submit"
               disabled={createIndicacao.isPending}
@@ -346,5 +365,7 @@ function PosCadastro() {
         </div>
       </div>
     </div>
+    <IndicacaoPrivacyModal open={privacyModalOpen} onClose={() => setPrivacyModalOpen(false)} />
+    </>
   );
 }

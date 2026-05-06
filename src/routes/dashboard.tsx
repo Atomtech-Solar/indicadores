@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   LayoutDashboard,
@@ -38,6 +38,7 @@ import { formatBRL, formatDate } from "@/lib/format";
 import { fetchUsuarioRow } from "@/lib/usuario-profile";
 import type { Tables } from "@/lib/supabase/database.types";
 import { RequireAuth } from "@/components/auth/RequireAuth";
+import { IndicacaoLgpdConsentField, IndicacaoPrivacyModal } from "@/components/indicacao-lgpd-consent";
 
 const DASHBOARD_SIDEBAR_LOGO_URL = "https://i.ibb.co/kgsNzg3v/Documento-de-Bryan-Henrique.png";
 
@@ -118,6 +119,41 @@ function makeUploadId() {
   return `${Date.now().toString(36)}-${random}`;
 }
 
+const MAX_INDICACAO_FOTO_BYTES = 5 * 1024 * 1024;
+
+const MAX_INDICACAO_FOTOS = 4;
+
+const INDICACAO_FOTOS_ORDEM_HINT =
+  "Envio opcional. Se anexar, a ordem sugerida é: 1ª conta · 2ª padrão · 3ª e 4ª outras (telhado, medidor…).";
+
+function validateIndicacaoImageFile(file: File): string | null {
+  if (!file.type.startsWith("image/")) return "Envie apenas arquivo de imagem.";
+  if (file.size > MAX_INDICACAO_FOTO_BYTES) return "Limite máximo de 5MB.";
+  return null;
+}
+
+async function uploadIndicacaoComprovante(authUserId: string, file: File): Promise<string> {
+  const err = validateIndicacaoImageFile(file);
+  if (err) throw new Error(err);
+
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+  const filePath = `${authUserId}/${Date.now()}-${makeUploadId()}.${extension}`;
+  const { error: uploadError } = await supabase.storage
+    .from("indicacoes-comprovantes")
+    .upload(filePath, file, {
+      upsert: false,
+      contentType: file.type,
+    });
+  if (uploadError) {
+    throw new Error(`Upload falhou: ${uploadError.message}`);
+  }
+  return filePath;
+}
+
+type IndicacaoFotoTuple<T> = [T, T, T, T];
+
+const emptyIndicacaoFotoTuple = <T,>(fill: T): IndicacaoFotoTuple<T> => [fill, fill, fill, fill];
+
 function Dashboard() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -140,14 +176,15 @@ function Dashboard() {
   const [editNome, setEditNome] = useState("");
   const [editWhatsapp, setEditWhatsapp] = useState("");
   const [loadingEditIndicacao, setLoadingEditIndicacao] = useState(false);
-  const [editContaEnergiaPath, setEditContaEnergiaPath] = useState<string | null>(null);
-  const [editFotoPadraoPath, setEditFotoPadraoPath] = useState<string | null>(null);
-  const [editContaEnergiaFile, setEditContaEnergiaFile] = useState<File | null>(null);
-  const [editFotoPadraoFile, setEditFotoPadraoFile] = useState<File | null>(null);
-  const [editContaEnergiaError, setEditContaEnergiaError] = useState<string | null>(null);
-  const [editFotoPadraoError, setEditFotoPadraoError] = useState<string | null>(null);
-  const [editContaEnergiaSignedUrl, setEditContaEnergiaSignedUrl] = useState<string | null>(null);
-  const [editFotoPadraoSignedUrl, setEditFotoPadraoSignedUrl] = useState<string | null>(null);
+  const [editFotoPaths, setEditFotoPaths] = useState<IndicacaoFotoTuple<string | null>>(() =>
+    emptyIndicacaoFotoTuple(null),
+  );
+  const [editFotoFiles, setEditFotoFiles] = useState<IndicacaoFotoTuple<File | null>>(() =>
+    emptyIndicacaoFotoTuple(null),
+  );
+  const [editFotoSignedUrls, setEditFotoSignedUrls] = useState<IndicacaoFotoTuple<string | null>>(() =>
+    emptyIndicacaoFotoTuple(null),
+  );
   const indicacoesSearchDebounced = useDebouncedValue(indicacoesSearch, 500);
   const INDICACOES_TAB_PAGE_SIZE = 10;
 
@@ -436,50 +473,12 @@ function Dashboard() {
         throw new Error("Não foi possível validar sua sessão para upload.");
       }
 
-      let contaEnergiaPath = editContaEnergiaPath;
-      if (editContaEnergiaFile) {
-        if (!editContaEnergiaFile.type.startsWith("image/")) {
-          throw new Error("Envie apenas imagens no campo da conta de energia.");
+      const nextPaths = [...editFotoPaths] as IndicacaoFotoTuple<string | null>;
+      for (let i = 0; i < 4; i++) {
+        const f = editFotoFiles[i];
+        if (f) {
+          nextPaths[i] = await uploadIndicacaoComprovante(authUser.id, f);
         }
-        if (editContaEnergiaFile.size > 5 * 1024 * 1024) {
-          throw new Error("A imagem da conta de energia deve ter no máximo 5MB.");
-        }
-
-        const extension = editContaEnergiaFile.name.split(".").pop()?.toLowerCase() ?? "jpg";
-        const filePath = `${authUser.id}/${Date.now()}-${makeUploadId()}.${extension}`;
-        const { error: uploadError } = await supabase.storage
-          .from("indicacoes-comprovantes")
-          .upload(filePath, editContaEnergiaFile, {
-            upsert: false,
-            contentType: editContaEnergiaFile.type,
-          });
-        if (uploadError) {
-          throw new Error(`Upload da conta de energia falhou: ${uploadError.message}`);
-        }
-        contaEnergiaPath = filePath;
-      }
-
-      let fotoPadraoPath = editFotoPadraoPath;
-      if (editFotoPadraoFile) {
-        if (!editFotoPadraoFile.type.startsWith("image/")) {
-          throw new Error("Envie apenas imagens no campo da foto do padrão.");
-        }
-        if (editFotoPadraoFile.size > 5 * 1024 * 1024) {
-          throw new Error("A foto do padrão deve ter no máximo 5MB.");
-        }
-
-        const extension = editFotoPadraoFile.name.split(".").pop()?.toLowerCase() ?? "jpg";
-        const filePath = `${authUser.id}/${Date.now()}-${makeUploadId()}.${extension}`;
-        const { error: uploadError } = await supabase.storage
-          .from("indicacoes-comprovantes")
-          .upload(filePath, editFotoPadraoFile, {
-            upsert: false,
-            contentType: editFotoPadraoFile.type,
-          });
-        if (uploadError) {
-          throw new Error(`Upload da foto do padrão falhou: ${uploadError.message}`);
-        }
-        fotoPadraoPath = filePath;
       }
 
       const { error } = await supabase
@@ -487,8 +486,10 @@ function Dashboard() {
         .update({
           nome_indicado: nome,
           whatsapp,
-          conta_energia_url: contaEnergiaPath,
-          foto_padrao_url: fotoPadraoPath,
+          conta_energia_url: nextPaths[0],
+          foto_padrao_url: nextPaths[1],
+          foto_extra_1_url: nextPaths[2],
+          foto_extra_2_url: nextPaths[3],
         })
         .eq("id", editingIndicacaoId);
 
@@ -511,14 +512,9 @@ function Dashboard() {
     setEditingIndicacaoId(null);
     setEditNome("");
     setEditWhatsapp("");
-    setEditContaEnergiaPath(null);
-    setEditFotoPadraoPath(null);
-    setEditContaEnergiaFile(null);
-    setEditFotoPadraoFile(null);
-    setEditContaEnergiaError(null);
-    setEditFotoPadraoError(null);
-    setEditContaEnergiaSignedUrl(null);
-    setEditFotoPadraoSignedUrl(null);
+    setEditFotoPaths(emptyIndicacaoFotoTuple(null));
+    setEditFotoFiles(emptyIndicacaoFotoTuple(null));
+    setEditFotoSignedUrls(emptyIndicacaoFotoTuple(null));
   };
 
   const openEditIndicacao = async (id: number, fallbackNome: string) => {
@@ -526,7 +522,9 @@ function Dashboard() {
       setLoadingEditIndicacao(true);
       const { data, error } = await supabase
         .from("indicacoes")
-        .select("nome_indicado, whatsapp, conta_energia_url, foto_padrao_url")
+        .select(
+          "nome_indicado, whatsapp, conta_energia_url, foto_padrao_url, foto_extra_1_url, foto_extra_2_url",
+        )
         .eq("id", id)
         .single();
 
@@ -535,24 +533,33 @@ function Dashboard() {
       setEditingIndicacaoId(id);
       setEditNome(data?.nome_indicado ?? fallbackNome);
       setEditWhatsapp(data?.whatsapp ?? "");
-      setEditContaEnergiaPath(data?.conta_energia_url ?? null);
-      setEditFotoPadraoPath(data?.foto_padrao_url ?? null);
-      setEditContaEnergiaFile(null);
-      setEditFotoPadraoFile(null);
-      setEditContaEnergiaError(null);
-      setEditFotoPadraoError(null);
-
-      const [contaSigned, padraoSigned] = await Promise.all([
-        data?.conta_energia_url
-          ? supabase.storage.from("indicacoes-comprovantes").createSignedUrl(data.conta_energia_url, 60 * 60)
-          : Promise.resolve({ data: null, error: null }),
-        data?.foto_padrao_url
-          ? supabase.storage.from("indicacoes-comprovantes").createSignedUrl(data.foto_padrao_url, 60 * 60)
-          : Promise.resolve({ data: null, error: null }),
+      setEditFotoPaths([
+        data?.conta_energia_url ?? null,
+        data?.foto_padrao_url ?? null,
+        data?.foto_extra_1_url ?? null,
+        data?.foto_extra_2_url ?? null,
       ]);
+      setEditFotoFiles(emptyIndicacaoFotoTuple(null));
 
-      setEditContaEnergiaSignedUrl(contaSigned.data?.signedUrl ?? null);
-      setEditFotoPadraoSignedUrl(padraoSigned.data?.signedUrl ?? null);
+      const storagePaths = [
+        data?.conta_energia_url,
+        data?.foto_padrao_url,
+        data?.foto_extra_1_url,
+        data?.foto_extra_2_url,
+      ] as const;
+      const signedResults = await Promise.all(
+        storagePaths.map((p) =>
+          p
+            ? supabase.storage.from("indicacoes-comprovantes").createSignedUrl(p, 60 * 60)
+            : Promise.resolve({ data: null, error: null }),
+        ),
+      );
+      setEditFotoSignedUrls([
+        signedResults[0].data?.signedUrl ?? null,
+        signedResults[1].data?.signedUrl ?? null,
+        signedResults[2].data?.signedUrl ?? null,
+        signedResults[3].data?.signedUrl ?? null,
+      ]);
     } catch {
       toast.error("Não foi possível abrir edição dessa indicação.");
     } finally {
@@ -1523,65 +1530,49 @@ function Dashboard() {
           loading={loadingEditIndicacao}
           nome={editNome}
           whatsapp={editWhatsapp}
-          contaEnergiaPath={editContaEnergiaPath}
-          fotoPadraoPath={editFotoPadraoPath}
-          contaEnergiaSignedUrl={editContaEnergiaSignedUrl}
-          fotoPadraoSignedUrl={editFotoPadraoSignedUrl}
-          contaEnergiaFile={editContaEnergiaFile}
-          fotoPadraoFile={editFotoPadraoFile}
-          contaEnergiaError={editContaEnergiaError}
-          fotoPadraoError={editFotoPadraoError}
+          fotoPaths={editFotoPaths}
+          fotoFiles={editFotoFiles}
+          fotoSignedUrls={editFotoSignedUrls}
           saving={updateIndicacaoMutation.isPending}
           onClose={closeEditIndicacaoModal}
           onNomeChange={setEditNome}
           onWhatsappChange={(value) => setEditWhatsapp(maskWhatsapp(value))}
-          onContaEnergiaSelect={(file) => {
-            setEditContaEnergiaError(null);
-            if (!file) {
-              setEditContaEnergiaFile(null);
-              return;
+          onMergeFotos={(files) => {
+            const nextFiles = [...editFotoFiles] as IndicacaoFotoTuple<File | null>;
+            const paths = [...editFotoPaths];
+            let slot = 0;
+            for (const file of files) {
+              const err = validateIndicacaoImageFile(file);
+              if (err) {
+                toast.error(err);
+                return;
+              }
+              while (slot < MAX_INDICACAO_FOTOS && (paths[slot] || nextFiles[slot])) slot++;
+              if (slot >= MAX_INDICACAO_FOTOS) {
+                toast("Todas as 4 posições estão ocupadas. Remova uma foto para adicionar outra.");
+                return;
+              }
+              nextFiles[slot] = file;
+              slot++;
             }
-            if (!file.type.startsWith("image/")) {
-              setEditContaEnergiaFile(null);
-              setEditContaEnergiaError("Envie apenas arquivo de imagem.");
-              return;
-            }
-            if (file.size > 5 * 1024 * 1024) {
-              setEditContaEnergiaFile(null);
-              setEditContaEnergiaError("Limite máximo de 5MB.");
-              return;
-            }
-            setEditContaEnergiaFile(file);
+            setEditFotoFiles(nextFiles);
           }}
-          onRemoveContaEnergia={() => {
-            setEditContaEnergiaFile(null);
-            setEditContaEnergiaPath(null);
-            setEditContaEnergiaSignedUrl(null);
-            setEditContaEnergiaError(null);
-          }}
-          onFotoPadraoSelect={(file) => {
-            setEditFotoPadraoError(null);
-            if (!file) {
-              setEditFotoPadraoFile(null);
-              return;
-            }
-            if (!file.type.startsWith("image/")) {
-              setEditFotoPadraoFile(null);
-              setEditFotoPadraoError("Envie apenas arquivo de imagem.");
-              return;
-            }
-            if (file.size > 5 * 1024 * 1024) {
-              setEditFotoPadraoFile(null);
-              setEditFotoPadraoError("Limite máximo de 5MB.");
-              return;
-            }
-            setEditFotoPadraoFile(file);
-          }}
-          onRemoveFotoPadrao={() => {
-            setEditFotoPadraoFile(null);
-            setEditFotoPadraoPath(null);
-            setEditFotoPadraoSignedUrl(null);
-            setEditFotoPadraoError(null);
+          onFotoRemove={(index) => {
+            setEditFotoPaths((prev) => {
+              const n = [...prev] as IndicacaoFotoTuple<string | null>;
+              n[index] = null;
+              return n;
+            });
+            setEditFotoFiles((prev) => {
+              const n = [...prev] as IndicacaoFotoTuple<File | null>;
+              n[index] = null;
+              return n;
+            });
+            setEditFotoSignedUrls((prev) => {
+              const n = [...prev] as IndicacaoFotoTuple<string | null>;
+              n[index] = null;
+              return n;
+            });
           }}
           onSave={() => updateIndicacaoMutation.mutate()}
         />
@@ -1751,10 +1742,46 @@ function NovaIndicacaoModal({
     tipoProjetos: [] as string[],
     observacoes: "",
   });
-  const [contaEnergiaFile, setContaEnergiaFile] = useState<File | null>(null);
-  const [contaEnergiaError, setContaEnergiaError] = useState<string | null>(null);
-  const [fotoPadraoFile, setFotoPadraoFile] = useState<File | null>(null);
-  const [fotoPadraoError, setFotoPadraoError] = useState<string | null>(null);
+  const [novaFotoList, setNovaFotoList] = useState<File[]>([]);
+  const novaFotoInputRef = useRef<HTMLInputElement>(null);
+  const [novaThumbUrls, setNovaThumbUrls] = useState<string[]>([]);
+  const [lgpdConsent, setLgpdConsent] = useState(false);
+  const [privacyModalOpen, setPrivacyModalOpen] = useState(false);
+
+  useEffect(() => {
+    const urls = novaFotoList.map((f) => URL.createObjectURL(f));
+    setNovaThumbUrls(urls);
+    return () => {
+      urls.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [novaFotoList]);
+
+  const appendNovaFotosFromPicker = (list: FileList | null) => {
+    if (!list?.length) return;
+    const incoming = Array.from(list);
+    const room = MAX_INDICACAO_FOTOS - novaFotoList.length;
+    if (room <= 0) {
+      toast("Você já anexou o máximo de 4 fotos.");
+      if (novaFotoInputRef.current) novaFotoInputRef.current.value = "";
+      return;
+    }
+    const accepted: File[] = [];
+    for (const file of incoming) {
+      if (accepted.length >= room) break;
+      const err = validateIndicacaoImageFile(file);
+      if (err) {
+        toast.error(err);
+        if (novaFotoInputRef.current) novaFotoInputRef.current.value = "";
+        return;
+      }
+      accepted.push(file);
+    }
+    if (accepted.length < incoming.length && novaFotoList.length + accepted.length >= MAX_INDICACAO_FOTOS) {
+      toast("Só cabem mais algumas fotos — anexamos até o limite de 4.");
+    }
+    setNovaFotoList((prev) => [...prev, ...accepted].slice(0, MAX_INDICACAO_FOTOS));
+    if (novaFotoInputRef.current) novaFotoInputRef.current.value = "";
+  };
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -1770,52 +1797,10 @@ function NovaIndicacaoModal({
         throw new Error("Não foi possível validar sua sessão para upload.");
       }
 
-      let contaEnergiaPath: string | null = null;
-      if (contaEnergiaFile) {
-        if (!contaEnergiaFile.type.startsWith("image/")) {
-          throw new Error("Envie apenas imagens no campo da conta de energia.");
-        }
-        if (contaEnergiaFile.size > 5 * 1024 * 1024) {
-          throw new Error("A imagem da conta de energia deve ter no máximo 5MB.");
-        }
-
-        const extension = contaEnergiaFile.name.split(".").pop()?.toLowerCase() ?? "jpg";
-        const filePath = `${authUser.id}/${Date.now()}-${makeUploadId()}.${extension}`;
-        const { error: uploadError } = await supabase.storage
-          .from("indicacoes-comprovantes")
-          .upload(filePath, contaEnergiaFile, {
-            upsert: false,
-            contentType: contaEnergiaFile.type,
-          });
-
-        if (uploadError) {
-          throw new Error(`Upload da conta de energia falhou: ${uploadError.message}`);
-        }
-        contaEnergiaPath = filePath;
-      }
-
-      let fotoPadraoPath: string | null = null;
-      if (fotoPadraoFile) {
-        if (!fotoPadraoFile.type.startsWith("image/")) {
-          throw new Error("Envie apenas imagens no campo da foto do padrão.");
-        }
-        if (fotoPadraoFile.size > 5 * 1024 * 1024) {
-          throw new Error("A foto do padrão deve ter no máximo 5MB.");
-        }
-
-        const extension = fotoPadraoFile.name.split(".").pop()?.toLowerCase() ?? "jpg";
-        const filePath = `${authUser.id}/${Date.now()}-${makeUploadId()}.${extension}`;
-        const { error: uploadError } = await supabase.storage
-          .from("indicacoes-comprovantes")
-          .upload(filePath, fotoPadraoFile, {
-            upsert: false,
-            contentType: fotoPadraoFile.type,
-          });
-
-        if (uploadError) {
-          throw new Error(`Upload da foto do padrão falhou: ${uploadError.message}`);
-        }
-        fotoPadraoPath = filePath;
+      const paths = emptyIndicacaoFotoTuple(null) as IndicacaoFotoTuple<string | null>;
+      for (let i = 0; i < novaFotoList.length && i < MAX_INDICACAO_FOTOS; i++) {
+        const f = novaFotoList[i];
+        paths[i] = await uploadIndicacaoComprovante(authUser.id, f);
       }
 
       const { data, error } = await supabase
@@ -1827,8 +1812,10 @@ function NovaIndicacaoModal({
           tipo: mapTipoToDb(form.tipo),
           tipo_projeto: form.tipoProjetos.length ? form.tipoProjetos.join(",") : null,
           observacoes: form.observacoes.trim() || null,
-          conta_energia_url: contaEnergiaPath,
-          foto_padrao_url: fotoPadraoPath,
+          conta_energia_url: paths[0],
+          foto_padrao_url: paths[1],
+          foto_extra_1_url: paths[2],
+          foto_extra_2_url: paths[3],
         })
         .select("id")
         .single();
@@ -1850,14 +1837,6 @@ function NovaIndicacaoModal({
       toast.error("Preencha nome e WhatsApp.");
       return;
     }
-    if (!contaEnergiaFile) {
-      toast.error("A foto da conta de energia é obrigatória.");
-      return;
-    }
-    if (!fotoPadraoFile) {
-      toast.error("A foto do padrão é obrigatória.");
-      return;
-    }
     if (form.tipoProjetos.length === 0) {
       toast.error("Selecione ao menos uma solução de interesse.");
       return;
@@ -1866,10 +1845,15 @@ function NovaIndicacaoModal({
       toast.error("Preencha o campo de observações.");
       return;
     }
+    if (!lgpdConsent) {
+      toast.error("É necessário aceitar o consentimento e a Política de Privacidade para enviar.");
+      return;
+    }
     mutation.mutate();
   };
 
   return (
+    <>
     <div className="fixed inset-0 z-50 grid items-start sm:items-center place-items-center overflow-y-auto bg-foreground/40 backdrop-blur-sm p-4 animate-in fade-in">
       <div className="w-full max-w-md max-h-[calc(100vh-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto bg-card rounded-2xl shadow-card-hover border border-border p-6">
         <div className="flex items-start justify-between mb-5">
@@ -1930,76 +1914,59 @@ function NovaIndicacaoModal({
               className="mt-1.5 rounded-[10px] h-11"
             />
           </div>
-          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-            <p className="text-xs text-emerald-800">
-              Caso não saiba como tirar a foto, vá na aba de tutorial.
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 space-y-1.5">
+            <p className="text-xs text-emerald-800 leading-relaxed">
+              <span className="font-semibold">Fotos são opcionais</span>, mas ajudam muito na análise. Se puder, envie a{" "}
+              <span className="font-semibold">conta de energia</span> e o <span className="font-semibold">padrão elétrico</span>;
+              outras imagens (telhado, medidor, fachada etc.) também são bem-vindas — até{" "}
+              <span className="font-semibold">4 fotos</span> (5MB cada).
             </p>
+            <p className="text-xs text-emerald-800">Caso não saiba como tirar a foto, vá na aba de tutorial.</p>
           </div>
-          <div>
-            <Label htmlFor="m-conta-energia" className="text-sm font-medium">
-              Suba a foto da conta de energia
-            </Label>
-            <Input
-              id="m-conta-energia"
-              type="file"
-              required
-              accept="image/*"
-              onChange={(e) => {
-                const file = e.target.files?.[0] ?? null;
-                setContaEnergiaError(null);
-                if (!file) {
-                  setContaEnergiaFile(null);
-                  return;
-                }
-                if (!file.type.startsWith("image/")) {
-                  setContaEnergiaFile(null);
-                  setContaEnergiaError("Envie apenas arquivo de imagem.");
-                  return;
-                }
-                if (file.size > 5 * 1024 * 1024) {
-                  setContaEnergiaFile(null);
-                  setContaEnergiaError("Limite máximo de 5MB.");
-                  return;
-                }
-                setContaEnergiaFile(file);
-              }}
-              className="mt-1.5 rounded-[10px] h-11 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-50 file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-emerald-700"
-            />
-            <p className="mt-1 text-xs text-zinc-500">Formato: qualquer imagem • Limite: 5MB</p>
-            {contaEnergiaError && <p className="mt-1 text-xs text-rose-600">{contaEnergiaError}</p>}
-          </div>
-          <div>
-            <Label htmlFor="m-foto-padrao" className="text-sm font-medium">
-              Suba a foto do padrão
-            </Label>
-            <Input
-              id="m-foto-padrao"
-              type="file"
-              required
-              accept="image/*"
-              onChange={(e) => {
-                const file = e.target.files?.[0] ?? null;
-                setFotoPadraoError(null);
-                if (!file) {
-                  setFotoPadraoFile(null);
-                  return;
-                }
-                if (!file.type.startsWith("image/")) {
-                  setFotoPadraoFile(null);
-                  setFotoPadraoError("Envie apenas arquivo de imagem.");
-                  return;
-                }
-                if (file.size > 5 * 1024 * 1024) {
-                  setFotoPadraoFile(null);
-                  setFotoPadraoError("Limite máximo de 5MB.");
-                  return;
-                }
-                setFotoPadraoFile(file);
-              }}
-              className="mt-1.5 rounded-[10px] h-11 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-50 file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-emerald-700"
-            />
-            <p className="mt-1 text-xs text-zinc-500">Formato: qualquer imagem • Limite: 5MB</p>
-            {fotoPadraoError && <p className="mt-1 text-xs text-rose-600">{fotoPadraoError}</p>}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Fotos do local (opcional)</Label>
+            <div className="rounded-xl border border-input bg-muted/30 p-3">
+              <input
+                ref={novaFotoInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="sr-only"
+                aria-hidden
+                tabIndex={-1}
+                onChange={(e) => appendNovaFotosFromPicker(e.target.files)}
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                {novaThumbUrls.map((url, i) => (
+                  <div
+                    key={url}
+                    className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded-lg border border-border bg-background shadow-sm"
+                  >
+                    <img src={url} alt="" className="h-full w-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setNovaFotoList((prev) => prev.filter((_, j) => j !== i))}
+                      className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white shadow hover:bg-black/85"
+                      aria-label="Remover foto"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                {novaFotoList.length < MAX_INDICACAO_FOTOS && (
+                  <button
+                    type="button"
+                    onClick={() => novaFotoInputRef.current?.click()}
+                    className="flex h-[72px] w-[72px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg border-2 border-dashed border-emerald-300/80 bg-emerald-50/50 text-emerald-800 transition hover:border-emerald-400 hover:bg-emerald-50"
+                  >
+                    <Plus className="h-5 w-5" />
+                    <span className="px-1 text-center text-[10px] font-medium leading-tight">Adicionar</span>
+                  </button>
+                )}
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground leading-snug">{INDICACAO_FOTOS_ORDEM_HINT}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Imagem • até 5MB cada • máximo 4</p>
+            </div>
           </div>
           <div>
             <Label className="text-sm font-medium">
@@ -2043,6 +2010,13 @@ function NovaIndicacaoModal({
               className="mt-1.5 min-h-[140px] resize-none rounded-[10px]"
             />
           </div>
+          <IndicacaoLgpdConsentField
+            id="nova-indicacao-lgpd"
+            checked={lgpdConsent}
+            onCheckedChange={setLgpdConsent}
+            onOpenPrivacy={() => setPrivacyModalOpen(true)}
+            disabled={mutation.isPending}
+          />
           <Button
             type="submit"
             disabled={mutation.isPending}
@@ -2054,6 +2028,8 @@ function NovaIndicacaoModal({
         </form>
       </div>
     </div>
+    <IndicacaoPrivacyModal open={privacyModalOpen} onClose={() => setPrivacyModalOpen(false)} />
+    </>
   );
 }
 
@@ -2061,71 +2037,48 @@ function EditIndicacaoModal({
   loading,
   nome,
   whatsapp,
-  contaEnergiaPath,
-  fotoPadraoPath,
-  contaEnergiaSignedUrl,
-  fotoPadraoSignedUrl,
-  contaEnergiaFile,
-  fotoPadraoFile,
-  contaEnergiaError,
-  fotoPadraoError,
+  fotoPaths,
+  fotoFiles,
+  fotoSignedUrls,
   saving,
   onClose,
   onNomeChange,
   onWhatsappChange,
-  onContaEnergiaSelect,
-  onRemoveContaEnergia,
-  onFotoPadraoSelect,
-  onRemoveFotoPadrao,
+  onMergeFotos,
+  onFotoRemove,
   onSave,
 }: {
   loading: boolean;
   nome: string;
   whatsapp: string;
-  contaEnergiaPath: string | null;
-  fotoPadraoPath: string | null;
-  contaEnergiaSignedUrl: string | null;
-  fotoPadraoSignedUrl: string | null;
-  contaEnergiaFile: File | null;
-  fotoPadraoFile: File | null;
-  contaEnergiaError: string | null;
-  fotoPadraoError: string | null;
+  fotoPaths: IndicacaoFotoTuple<string | null>;
+  fotoFiles: IndicacaoFotoTuple<File | null>;
+  fotoSignedUrls: IndicacaoFotoTuple<string | null>;
   saving: boolean;
   onClose: () => void;
   onNomeChange: (value: string) => void;
   onWhatsappChange: (value: string) => void;
-  onContaEnergiaSelect: (file: File | null) => void;
-  onRemoveContaEnergia: () => void;
-  onFotoPadraoSelect: (file: File | null) => void;
-  onRemoveFotoPadrao: () => void;
+  onMergeFotos: (files: File[]) => void;
+  onFotoRemove: (index: number) => void;
   onSave: () => void;
 }) {
   const [zoomedImageUrl, setZoomedImageUrl] = useState<string | null>(null);
-  const [contaPreviewUrl, setContaPreviewUrl] = useState<string | null>(null);
-  const [padraoPreviewUrl, setPadraoPreviewUrl] = useState<string | null>(null);
+  const [blobPreviewUrls, setBlobPreviewUrls] = useState<IndicacaoFotoTuple<string | null>>(() =>
+    emptyIndicacaoFotoTuple(null),
+  );
+  const editFotoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!contaEnergiaFile) {
-      setContaPreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(contaEnergiaFile);
-    setContaPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [contaEnergiaFile]);
+    const urls = fotoFiles.map((f) => (f ? URL.createObjectURL(f) : null)) as IndicacaoFotoTuple<string | null>;
+    setBlobPreviewUrls(urls);
+    return () => {
+      urls.forEach((u) => {
+        if (u) URL.revokeObjectURL(u);
+      });
+    };
+  }, [fotoFiles]);
 
-  useEffect(() => {
-    if (!fotoPadraoFile) {
-      setPadraoPreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(fotoPadraoFile);
-    setPadraoPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [fotoPadraoFile]);
-
-  const contaImageToShow = contaPreviewUrl ?? contaEnergiaSignedUrl;
-  const padraoImageToShow = padraoPreviewUrl ?? fotoPadraoSignedUrl;
+  const hasFreeSlot = [0, 1, 2, 3].some((i) => !fotoPaths[i] && !fotoFiles[i]);
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
@@ -2163,63 +2116,75 @@ function EditIndicacaoModal({
               className="mt-1.5"
             />
           </div>
-          <div>
-            <Label htmlFor="edit-indicacao-conta-energia">Foto da conta de energia</Label>
-            <Input
-              id="edit-indicacao-conta-energia"
-              type="file"
-              accept="image/*"
-              onChange={(e) => onContaEnergiaSelect(e.target.files?.[0] ?? null)}
-              disabled={loading || saving}
-              className="mt-1.5 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-50 file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-emerald-700"
-            />
-            <p className="mt-1 text-xs text-zinc-500">
-              {contaEnergiaPath ? "Foto atual cadastrada. Selecione outra para substituir." : "Nenhuma foto cadastrada ainda."}
-            </p>
-            {contaImageToShow && (
-              <div className="mt-2 space-y-2">
-                <button
-                  type="button"
-                  onClick={() => setZoomedImageUrl(contaImageToShow)}
-                  className="block w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50"
-                >
-                  <img src={contaImageToShow} alt="Pré-visualização da conta de energia" className="h-40 w-full object-cover" />
-                </button>
-                <Button type="button" variant="outline" className="h-9" onClick={onRemoveContaEnergia} disabled={loading || saving}>
-                  Excluir imagem
-                </Button>
+          <div className="space-y-2">
+            <Label>Fotos do local (opcional)</Label>
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50/80 p-3">
+              <input
+                ref={editFotoInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="sr-only"
+                aria-hidden
+                tabIndex={-1}
+                onChange={(e) => {
+                  const picked = Array.from(e.target.files ?? []);
+                  if (picked.length) onMergeFotos(picked);
+                  e.target.value = "";
+                }}
+              />
+              <div className="grid grid-cols-4 gap-2">
+                {([0, 1, 2, 3] as const).map((i) => {
+                  const imageToShow = blobPreviewUrls[i] ?? fotoSignedUrls[i];
+                  const hasImage = Boolean(imageToShow);
+                  return (
+                    <div
+                      key={i}
+                      className="relative aspect-square overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm"
+                    >
+                      {hasImage && imageToShow ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setZoomedImageUrl(imageToShow)}
+                            className="block h-full w-full"
+                          >
+                            <img src={imageToShow} alt="" className="h-full w-full object-cover" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onFotoRemove(i)}
+                            disabled={loading || saving}
+                            className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-white shadow hover:bg-black/85 disabled:opacity-50"
+                            aria-label="Remover foto"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </>
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center px-1 text-center text-[10px] font-medium text-zinc-400">
+                          —
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            )}
-            {contaEnergiaError && <p className="mt-1 text-xs text-rose-600">{contaEnergiaError}</p>}
-          </div>
-          <div>
-            <Label htmlFor="edit-indicacao-foto-padrao">Foto do padrão</Label>
-            <Input
-              id="edit-indicacao-foto-padrao"
-              type="file"
-              accept="image/*"
-              onChange={(e) => onFotoPadraoSelect(e.target.files?.[0] ?? null)}
-              disabled={loading || saving}
-              className="mt-1.5 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-50 file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-emerald-700"
-            />
-            <p className="mt-1 text-xs text-zinc-500">
-              {fotoPadraoPath ? "Foto atual cadastrada. Selecione outra para substituir." : "Nenhuma foto cadastrada ainda."}
-            </p>
-            {padraoImageToShow && (
-              <div className="mt-2 space-y-2">
-                <button
-                  type="button"
-                  onClick={() => setZoomedImageUrl(padraoImageToShow)}
-                  className="block w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50"
-                >
-                  <img src={padraoImageToShow} alt="Pré-visualização da foto do padrão" className="h-40 w-full object-cover" />
-                </button>
-                <Button type="button" variant="outline" className="h-9" onClick={onRemoveFotoPadrao} disabled={loading || saving}>
-                  Excluir imagem
-                </Button>
-              </div>
-            )}
-            {fotoPadraoError && <p className="mt-1 text-xs text-rose-600">{fotoPadraoError}</p>}
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-3 h-9 w-full gap-1.5 text-sm"
+                disabled={loading || saving || !hasFreeSlot}
+                onClick={() => editFotoInputRef.current?.click()}
+              >
+                <Plus className="h-4 w-4" />
+                Adicionar fotos
+              </Button>
+              <p className="mt-2 text-xs text-zinc-600 leading-snug">{INDICACAO_FOTOS_ORDEM_HINT}</p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Anexos opcionais. Novas imagens preenchem os espaços vazios. Toque na miniatura para ampliar.
+              </p>
+            </div>
           </div>
         </div>
 
