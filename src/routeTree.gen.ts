@@ -23,6 +23,10 @@ import { Route as ConfirmacaoRouteImport } from './routes/confirmacao'
 import { Route as CadastroRouteImport } from './routes/cadastro'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PoliticaPrivacidadeRouteImport } from './routes/politica-privacidade'
+import { Route as TermosServicoRouteImport } from './routes/termos-servico'
+import { Route as SegurancaRouteImport } from './routes/seguranca'
+import { Route as PoliticaCookiesRouteImport } from './routes/politica-cookies'
 
 const PosCadastroRoute = PosCadastroRouteImport.update({
   id: '/pos-cadastro',
@@ -94,6 +98,26 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const PoliticaPrivacidadeRoute = PoliticaPrivacidadeRouteImport.update({
+  id: '/politica-privacidade',
+  path: '/politica-privacidade',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const TermosServicoRoute = TermosServicoRouteImport.update({
+  id: '/termos-servico',
+  path: '/termos-servico',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SegurancaRoute = SegurancaRouteImport.update({
+  id: '/seguranca',
+  path: '/seguranca',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PoliticaCookiesRoute = PoliticaCookiesRouteImport.update({
+  id: '/politica-cookies',
+  path: '/politica-cookies',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -110,6 +134,10 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/perfil': typeof PerfilRoute
   '/pos-cadastro': typeof PosCadastroRoute
+  '/politica-privacidade': typeof PoliticaPrivacidadeRoute
+  '/termos-servico': typeof TermosServicoRoute
+  '/seguranca': typeof SegurancaRoute
+  '/politica-cookies': typeof PoliticaCookiesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -126,6 +154,10 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/perfil': typeof PerfilRoute
   '/pos-cadastro': typeof PosCadastroRoute
+  '/politica-privacidade': typeof PoliticaPrivacidadeRoute
+  '/termos-servico': typeof TermosServicoRoute
+  '/seguranca': typeof SegurancaRoute
+  '/politica-cookies': typeof PoliticaCookiesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -143,6 +175,10 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/perfil': typeof PerfilRoute
   '/pos-cadastro': typeof PosCadastroRoute
+  '/politica-privacidade': typeof PoliticaPrivacidadeRoute
+  '/termos-servico': typeof TermosServicoRoute
+  '/seguranca': typeof SegurancaRoute
+  '/politica-cookies': typeof PoliticaCookiesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -161,6 +197,10 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/perfil'
     | '/pos-cadastro'
+    | '/politica-privacidade'
+    | '/termos-servico'
+    | '/seguranca'
+    | '/politica-cookies'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -177,6 +217,10 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/perfil'
     | '/pos-cadastro'
+    | '/politica-privacidade'
+    | '/termos-servico'
+    | '/seguranca'
+    | '/politica-cookies'
   id:
     | '__root__'
     | '/'
@@ -193,6 +237,10 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/perfil'
     | '/pos-cadastro'
+    | '/politica-privacidade'
+    | '/termos-servico'
+    | '/seguranca'
+    | '/politica-cookies'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -210,6 +258,10 @@ export interface RootRouteChildren {
   OnboardingRoute: typeof OnboardingRoute
   PerfilRoute: typeof PerfilRoute
   PosCadastroRoute: typeof PosCadastroRoute
+  PoliticaPrivacidadeRoute: typeof PoliticaPrivacidadeRoute
+  TermosServicoRoute: typeof TermosServicoRoute
+  SegurancaRoute: typeof SegurancaRoute
+  PoliticaCookiesRoute: typeof PoliticaCookiesRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -312,6 +364,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/politica-privacidade': {
+      id: '/politica-privacidade'
+      path: '/politica-privacidade'
+      fullPath: '/politica-privacidade'
+      preLoaderRoute: typeof PoliticaPrivacidadeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/termos-servico': {
+      id: '/termos-servico'
+      path: '/termos-servico'
+      fullPath: '/termos-servico'
+      preLoaderRoute: typeof TermosServicoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/seguranca': {
+      id: '/seguranca'
+      path: '/seguranca'
+      fullPath: '/seguranca'
+      preLoaderRoute: typeof SegurancaRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/politica-cookies': {
+      id: '/politica-cookies'
+      path: '/politica-cookies'
+      fullPath: '/politica-cookies'
+      preLoaderRoute: typeof PoliticaCookiesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -330,6 +410,10 @@ const rootRouteChildren: RootRouteChildren = {
   OnboardingRoute: OnboardingRoute,
   PerfilRoute: PerfilRoute,
   PosCadastroRoute: PosCadastroRoute,
+  PoliticaPrivacidadeRoute: PoliticaPrivacidadeRoute,
+  TermosServicoRoute: TermosServicoRoute,
+  SegurancaRoute: SegurancaRoute,
+  PoliticaCookiesRoute: PoliticaCookiesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

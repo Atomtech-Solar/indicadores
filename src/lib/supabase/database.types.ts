@@ -154,6 +154,110 @@ export type Database = {
           },
         ];
       };
+      admin_messages: {
+        Row: {
+          category: string;
+          content: string;
+          created_at: string;
+          created_by: number;
+          id: number;
+          is_favorite: boolean;
+          title: string;
+          updated_at: string;
+          usage_count: number;
+        };
+        Insert: {
+          category: string;
+          content: string;
+          created_at?: string;
+          created_by: number;
+          id?: number;
+          is_favorite?: boolean;
+          title: string;
+          updated_at?: string;
+          usage_count?: number;
+        };
+        Update: {
+          category?: string;
+          content?: string;
+          created_at?: string;
+          created_by?: number;
+          id?: number;
+          is_favorite?: boolean;
+          title?: string;
+          updated_at?: string;
+          usage_count?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "admin_messages_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "usuarios";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      notificacoes: {
+        Row: {
+          ator_nome: string | null;
+          ator_usuario_id: number | null;
+          created_at: string;
+          destinatario_usuario_id: number;
+          entidade_id: number | null;
+          entidade_tipo: string | null;
+          evento: string;
+          id: number;
+          lida: boolean;
+          mensagem: string;
+          metadata: Json;
+          titulo: string;
+        };
+        Insert: {
+          ator_nome?: string | null;
+          ator_usuario_id?: number | null;
+          created_at?: string;
+          destinatario_usuario_id: number;
+          entidade_id?: number | null;
+          entidade_tipo?: string | null;
+          evento: string;
+          id?: number;
+          lida?: boolean;
+          mensagem: string;
+          metadata?: Json;
+          titulo: string;
+        };
+        Update: {
+          ator_nome?: string | null;
+          ator_usuario_id?: number | null;
+          created_at?: string;
+          destinatario_usuario_id?: number;
+          entidade_id?: number | null;
+          entidade_tipo?: string | null;
+          evento?: string;
+          id?: number;
+          lida?: boolean;
+          mensagem?: string;
+          metadata?: Json;
+          titulo?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notificacoes_ator_usuario_id_fkey";
+            columns: ["ator_usuario_id"];
+            isOneToOne: false;
+            referencedRelation: "usuarios";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notificacoes_destinatario_usuario_id_fkey";
+            columns: ["destinatario_usuario_id"];
+            isOneToOne: false;
+            referencedRelation: "usuarios";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       usuarios: {
         Row: {
           created_at: string;

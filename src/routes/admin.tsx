@@ -22,6 +22,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Download,
+  MessageSquareText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { RequireAdmin } from "@/components/auth/RequireAdmin";
@@ -41,6 +42,7 @@ import {
 } from "@/components/ui/dialog";
 import { callAdminOps, callAdminOpsMutation, setCommission } from "@/lib/admin-edge";
 import { SITE_LOGO_URL } from "@/lib/site-logo";
+import { MessagesTab } from "@/components/admin/messages/messages-tab";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -52,7 +54,7 @@ export const Route = createFileRoute("/admin")({
 function AdminRouteComponent() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<"overview" | "usuarios" | "indicacoes" | "comissoes" | "fotos" | "relatorios" | "configuracoes">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "usuarios" | "indicacoes" | "comissoes" | "fotos" | "mensagens" | "relatorios" | "configuracoes">("overview");
   const [commissionModal, setCommissionModal] = useState<{ indicacaoId: number; nomeIndicado: string } | null>(null);
   const [commissionValue, setCommissionValue] = useState("");
   const [projetoValue, setProjetoValue] = useState("");
@@ -86,6 +88,7 @@ function AdminRouteComponent() {
   } | null>(null);
   const [zoomedFotoUrl, setZoomedFotoUrl] = useState<string | null>(null);
   const [showSidebarMenu, setShowSidebarMenu] = useState(false);
+  const [showNotificationsMenu, setShowNotificationsMenu] = useState(false);
   const [avaliacaoModal, setAvaliacaoModal] = useState<{
     id: number;
     usuario_nome: string;
@@ -168,6 +171,68 @@ function AdminRouteComponent() {
         funnel: { enviado: number; analise: number; negociacao: number; fechado: number; perdido: number };
         alerts: string[];
       }>({ action: "overview" }),
+  });
+  const { data: currentAdmin } = useQuery({
+    queryKey: ["admin-current-user"],
+    retry: false,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("usuarios").select("id").maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+  const { data: adminNotifications = [] } = useQuery({
+    queryKey: ["admin-notificacoes", currentAdmin?.id],
+    enabled: Boolean(currentAdmin?.id),
+    retry: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: 15000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("notificacoes")
+        .select("id, titulo, mensagem, lida, created_at")
+        .eq("destinatario_usuario_id", currentAdmin!.id)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        id: number;
+        titulo: string;
+        mensagem: string;
+        lida: boolean;
+        created_at: string;
+      }>;
+    },
+  });
+  const adminUnreadNotifications = useMemo(
+    () => adminNotifications.filter((n) => !n.lida).length,
+    [adminNotifications],
+  );
+  const markAdminNotificationAsRead = useMutation({
+    mutationFn: async (notificationId: number) => {
+      const { error } = await supabase.from("notificacoes").update({ lida: true }).eq("id", notificationId);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin-notificacoes"] });
+    },
+  });
+  const markAllAdminNotificationsAsRead = useMutation({
+    mutationFn: async () => {
+      if (!currentAdmin?.id) return;
+      const unreadIds = adminNotifications.filter((n) => !n.lida).map((n) => n.id);
+      if (!unreadIds.length) return;
+      const { error } = await supabase
+        .from("notificacoes")
+        .update({ lida: true })
+        .in("id", unreadIds)
+        .eq("destinatario_usuario_id", currentAdmin.id);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin-notificacoes"] });
+    },
   });
 
   const { data: usuariosResp, isLoading: loadingUsuarios } = useQuery({
@@ -547,6 +612,7 @@ function AdminRouteComponent() {
       { key: "fotos", label: "Projetos", icon: ImageIcon },
       { key: "indicacoes", label: "Status", icon: TrendingUp },
       { key: "comissoes", label: "Comissões", icon: Wallet },
+      { key: "mensagens", label: "Central de Mensagens", icon: MessageSquareText },
       { key: "relatorios", label: "Relatórios", icon: BarChart3 },
       { key: "configuracoes", label: "Configurações", icon: Settings },
     ] as const,
@@ -716,10 +782,67 @@ function AdminRouteComponent() {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button type="button" className="relative h-10 w-10 rounded-xl border border-border hover:bg-muted grid place-items-center transition">
-                <Bell className="h-[18px] w-[18px] text-muted-foreground" />
-                <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary" />
-              </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  className="relative h-10 w-10 rounded-xl border border-border hover:bg-muted grid place-items-center transition"
+                  onClick={() => setShowNotificationsMenu((prev) => !prev)}
+                >
+                  <Bell className="h-[18px] w-[18px] text-muted-foreground" />
+                  {adminUnreadNotifications > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground grid place-items-center leading-none">
+                      {adminUnreadNotifications > 99 ? "99+" : adminUnreadNotifications}
+                    </span>
+                  )}
+                </button>
+                {showNotificationsMenu && (
+                  <>
+                    <button
+                      type="button"
+                      aria-label="Fechar notificações"
+                      onClick={() => setShowNotificationsMenu(false)}
+                      className="fixed inset-0 z-10 cursor-default"
+                    />
+                    <div className="absolute right-0 top-12 z-20 w-[380px] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-card shadow-card p-2">
+                      <div className="flex items-center justify-between px-2 py-1.5">
+                        <p className="text-sm font-semibold text-zinc-900">Notificações gerais</p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => markAllAdminNotificationsAsRead.mutate()}
+                          disabled={markAllAdminNotificationsAsRead.isPending || adminUnreadNotifications === 0}
+                        >
+                          Marcar todas como lidas
+                        </Button>
+                      </div>
+                      <div className="max-h-80 overflow-y-auto space-y-1 p-1">
+                        {adminNotifications.length === 0 && (
+                          <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-500">
+                            Sem notificações no momento.
+                          </div>
+                        )}
+                        {adminNotifications.map((n) => (
+                          <button
+                            key={n.id}
+                            type="button"
+                            className={`w-full rounded-lg border p-3 text-left transition ${
+                              n.lida ? "border-zinc-200 bg-white" : "border-emerald-200 bg-emerald-50/50"
+                            }`}
+                            onClick={() => {
+                              if (!n.lida) markAdminNotificationAsRead.mutate(n.id);
+                            }}
+                          >
+                            <p className="text-xs text-zinc-500">{formatDate(n.created_at)}</p>
+                            <p className="text-sm font-semibold text-zinc-900 mt-0.5">{n.titulo}</p>
+                            <p className="text-sm text-zinc-700 mt-1">{n.mensagem}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
               <Button type="button" variant="secondary" className="rounded-xl" onClick={() => void handleSignOut()}>
                 <LogOut className="h-4 w-4 mr-2" />
                 Sair
@@ -1764,6 +1887,8 @@ function AdminRouteComponent() {
                 </section>
               </div>
             )}
+
+            {activeTab === "mensagens" && <MessagesTab />}
 
             {activeTab === "configuracoes" && (
               <section className="rounded-2xl border border-zinc-200 bg-white p-5 md:p-6">
