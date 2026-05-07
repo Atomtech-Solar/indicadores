@@ -21,6 +21,7 @@ import {
   Trash2,
   AlertTriangle,
   CheckCircle2,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { RequireAdmin } from "@/components/auth/RequireAdmin";
@@ -69,6 +70,11 @@ function AdminRouteComponent() {
     nome: string;
     role: "indicador" | "admin";
     is_disabled: boolean;
+  } | null>(null);
+  const [confirmRoleModal, setConfirmRoleModal] = useState<{
+    usuario_id: string;
+    nome: string;
+    nextRole: "indicador" | "admin";
   } | null>(null);
   const [indicacoesSearch, setIndicacoesSearch] = useState("");
   const [indicacoesPage, setIndicacoesPage] = useState(1);
@@ -198,6 +204,7 @@ function AdminRouteComponent() {
           whatsapp: string | null;
           tipo_projeto: string | null;
           observacoes: string | null;
+          status: "enviado" | "recebido" | "analise" | "negociacao" | "fechado" | "perdido" | "pago" | null;
           conta_energia_url: string | null;
           foto_padrao_url: string | null;
           foto_extra_1_url: string | null;
@@ -350,6 +357,7 @@ function AdminRouteComponent() {
     },
     onError: () => toast.error("Não foi possível revogar admin."),
   });
+  const roleChangePending = promoteMutation.isPending || revokeAdminMutation.isPending;
 
   const disableMutation = useMutation({
     mutationFn: (userId: string) => callAdminOpsMutation({ action: "disable_user", userId }),
@@ -485,6 +493,33 @@ function AdminRouteComponent() {
   const formatIndicacaoStatusLabel = (status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido") => {
     if (status === "enviado") return "recebido";
     return status;
+  };
+  const getProjetoStatusTheme = (
+    rawStatus: "enviado" | "recebido" | "analise" | "negociacao" | "fechado" | "perdido" | "pago" | null | undefined,
+  ) => {
+    const status = (rawStatus ?? "").trim().toLowerCase();
+    if (!status || status === "enviado" || status === "recebido") {
+      return {
+        cardClass: "border-red-500 bg-red-100",
+        label: "recebido",
+      };
+    }
+    if (status === "analise" || status === "negociacao") {
+      return {
+        cardClass: "border-amber-300 bg-amber-50/70",
+        label: status,
+      };
+    }
+    if (status === "fechado" || status === "pago") {
+      return {
+        cardClass: "border-emerald-300 bg-emerald-50/70",
+        label: status,
+      };
+    }
+    return {
+      cardClass: "border-sky-300 bg-sky-50/70",
+      label: "perdido",
+    };
   };
 
   const formatPropostaComissaoStatusLabel = (status: string) => {
@@ -1480,11 +1515,25 @@ function AdminRouteComponent() {
             {activeTab === "fotos" && (
               <section className="space-y-4">
                 <div className="rounded-2xl border border-zinc-200 bg-white px-5 py-4">
-                  <h3 className="text-lg font-semibold text-zinc-900">Projetos com anexos</h3>
+                  <h3 className="text-lg font-semibold text-zinc-900">Projetos</h3>
                   <p className="text-sm text-zinc-600 mt-1">
-                    Indicações que enviaram conta de energia e/ou foto do padrão. Excluir remove o registro no Supabase
+                    Indicações enviadas, com ou sem anexos. Excluir remove o registro no Supabase
                     (comissões vinculadas são removidas) e some na aba Status e na dashboard do indicador.
                   </p>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                    <span className="inline-flex items-center rounded-full border border-red-500 bg-red-100 px-2.5 py-1 font-medium text-red-800">
+                      Vermelho: chegou agora (recebido)
+                    </span>
+                    <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 font-medium text-amber-700">
+                      Amarelo: em análise / negociação
+                    </span>
+                    <span className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">
+                      Verde: finalizado (fechado/pago)
+                    </span>
+                    <span className="inline-flex items-center rounded-full border border-sky-300 bg-sky-50 px-2.5 py-1 font-medium text-sky-700">
+                      Azul: perdido
+                    </span>
+                  </div>
                   <div className="mt-3">
                     <Input
                       value={fotosSearch}
@@ -1506,7 +1555,10 @@ function AdminRouteComponent() {
                   )}
                   {!loadingFotos &&
                     fotos.map((f) => (
-                      <div key={f.id} className="rounded-2xl border border-zinc-200 bg-white p-4 md:p-5 shadow-sm">
+                      <div
+                        key={f.id}
+                        className={`rounded-2xl border p-4 md:p-5 shadow-sm ${getProjetoStatusTheme(f.status).cardClass}`}
+                      >
                         <div className="mb-3">
                           <p className="text-sm text-zinc-600">Indicador</p>
                           <p className="font-semibold text-zinc-900">{f.usuario_nome}</p>
@@ -1519,6 +1571,9 @@ function AdminRouteComponent() {
                           <p className="text-xs text-zinc-700 mt-1">
                             <span className="font-medium">Solução:</span>{" "}
                             {formatTipoProjeto(f.tipo_projeto)}
+                          </p>
+                          <p className="text-xs text-zinc-700 mt-1">
+                            <span className="font-medium">Status:</span> {getProjetoStatusTheme(f.status).label}
                           </p>
                           <p className="text-xs text-zinc-700 mt-1">
                             <span className="font-medium">Observações:</span> {f.observacoes?.trim() || "Sem observações."}
@@ -1589,7 +1644,7 @@ function AdminRouteComponent() {
                     ))}
                   {!loadingFotos && fotos.length === 0 && (
                     <div className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-500">
-                      Nenhum projeto com anexos encontrado para o filtro informado.
+                      Nenhum projeto encontrado para o filtro informado.
                     </div>
                   )}
                 </div>
@@ -1728,10 +1783,13 @@ function AdminRouteComponent() {
                   variant="outline"
                   className="w-full justify-start"
                   onClick={() => {
-                    promoteMutation.mutate(actionUserModal.usuario_id);
-                    setActionUserModal(null);
+                    setConfirmRoleModal({
+                      usuario_id: actionUserModal.usuario_id,
+                      nome: actionUserModal.nome,
+                      nextRole: "admin",
+                    });
                   }}
-                  disabled={promoteMutation.isPending}
+                  disabled={roleChangePending}
                 >
                   Promover admin
                 </Button>
@@ -1741,10 +1799,13 @@ function AdminRouteComponent() {
                   variant="outline"
                   className="w-full justify-start border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
                   onClick={() => {
-                    revokeAdminMutation.mutate(actionUserModal.usuario_id);
-                    setActionUserModal(null);
+                    setConfirmRoleModal({
+                      usuario_id: actionUserModal.usuario_id,
+                      nome: actionUserModal.nome,
+                      nextRole: "indicador",
+                    });
                   }}
-                  disabled={revokeAdminMutation.isPending}
+                  disabled={roleChangePending}
                 >
                   Revogar admin
                 </Button>
@@ -1787,6 +1848,57 @@ function AdminRouteComponent() {
           </div>
         </div>
       )}
+
+      <Dialog
+        open={confirmRoleModal !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmRoleModal(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {confirmRoleModal?.nextRole === "admin"
+                ? "Confirmar promoção para admin?"
+                : "Confirmar revogação de admin?"}
+            </DialogTitle>
+            <DialogDescription className="pt-1">
+              {confirmRoleModal?.nextRole === "admin" ? (
+                <>Tem certeza que deseja transformar <strong>{confirmRoleModal?.nome}</strong> em admin?</>
+              ) : (
+                <>Tem certeza que deseja remover o admin de <strong>{confirmRoleModal?.nome}</strong>?</>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setConfirmRoleModal(null)}
+              disabled={roleChangePending}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              variant={confirmRoleModal?.nextRole === "admin" ? "default" : "destructive"}
+              disabled={roleChangePending || !confirmRoleModal}
+              onClick={() => {
+                if (!confirmRoleModal) return;
+                if (confirmRoleModal.nextRole === "admin") {
+                  promoteMutation.mutate(confirmRoleModal.usuario_id);
+                } else {
+                  revokeAdminMutation.mutate(confirmRoleModal.usuario_id);
+                }
+                setConfirmRoleModal(null);
+                setActionUserModal(null);
+              }}
+            >
+              {roleChangePending ? "Salvando..." : "Confirmar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {actionIndicacaoModal && (
         <div className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[1px] p-4 grid place-items-center">
@@ -1844,14 +1956,26 @@ function AdminRouteComponent() {
       )}
 
       {zoomedFotoUrl && (
-        <button
-          type="button"
-          onClick={() => setZoomedFotoUrl(null)}
+        <div
           className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4"
-          aria-label="Fechar visualização da foto"
+          onClick={() => setZoomedFotoUrl(null)}
+          role="presentation"
         >
-          <img src={zoomedFotoUrl} alt="Foto ampliada" className="max-h-[90vh] max-w-[90vw] rounded-xl object-contain" />
-        </button>
+          <div className="flex max-h-[90vh] max-w-[90vw] flex-col items-center gap-3" onClick={(e) => e.stopPropagation()}>
+            <img src={zoomedFotoUrl} alt="Foto ampliada" className="max-h-[82vh] max-w-[90vw] rounded-xl object-contain" />
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button asChild type="button" variant="secondary">
+                <a href={zoomedFotoUrl} download target="_blank" rel="noreferrer">
+                  <Download className="mr-2 h-4 w-4" />
+                  Download
+                </a>
+              </Button>
+              <Button type="button" variant="outline" className="border-zinc-300 bg-white/95" onClick={() => setZoomedFotoUrl(null)}>
+                Fechar
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {avaliacaoModal && (

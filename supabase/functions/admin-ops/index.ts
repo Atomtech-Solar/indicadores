@@ -144,16 +144,13 @@ async function listFotos(adminClient: SupabaseClient, params: ListParams) {
   let query = adminClient
       .from("indicacoes")
       .select(
-        "id, usuario_id, nome_indicado, whatsapp, tipo_projeto, observacoes, conta_energia_url, foto_padrao_url, foto_extra_1_url, foto_extra_2_url, created_at",
+        "id, usuario_id, nome_indicado, whatsapp, tipo_projeto, observacoes, status, conta_energia_url, foto_padrao_url, foto_extra_1_url, foto_extra_2_url, created_at",
         { count: "exact" },
-      )
-      .or(
-        "conta_energia_url.not.is.null,foto_padrao_url.not.is.null,foto_extra_1_url.not.is.null,foto_extra_2_url.not.is.null",
       )
       .order("created_at", { ascending: false });
 
   if (search) {
-    query = query.or(`nome_indicado.ilike.%${search}%,whatsapp.ilike.%${search}%,tipo_projeto.ilike.%${search}%,observacoes.ilike.%${search}%`);
+    query = query.or(`nome_indicado.ilike.%${search}%,whatsapp.ilike.%${search}%,tipo_projeto.ilike.%${search}%,observacoes.ilike.%${search}%,status.ilike.%${search}%`);
   }
 
   const { data: indicacoes, count } = await query.range(from, to);
@@ -192,6 +189,7 @@ async function listFotos(adminClient: SupabaseClient, params: ListParams) {
     whatsapp: i.whatsapp ?? null,
     tipo_projeto: i.tipo_projeto,
     observacoes: i.observacoes,
+    status: i.status,
     conta_energia_url: i.conta_energia_url ? (signedUrlByPath.get(i.conta_energia_url) ?? null) : null,
     foto_padrao_url: i.foto_padrao_url ? (signedUrlByPath.get(i.foto_padrao_url) ?? null) : null,
     foto_extra_1_url: i.foto_extra_1_url ? (signedUrlByPath.get(i.foto_extra_1_url) ?? null) : null,
