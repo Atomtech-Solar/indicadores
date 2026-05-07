@@ -21,6 +21,9 @@ type ActionPayload =
   | { action: "update_indicacao_status"; indicacaoId: number; status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido" }
   | { action: "list_comissoes"; page?: number; limit?: number; search?: string }
   | { action: "list_fotos"; page?: number; limit?: number; search?: string }
+  | { action: "list_project_comments"; indicacaoId: number }
+  | { action: "add_project_comment"; indicacaoId: number; comment: string }
+  | { action: "delete_project_comment"; commentId: number }
   | { action: "delete_indicacao"; indicacaoId: number }
   | { action: "update_comissao_status"; comissaoId: number; status: "pendente" | "disponivel" | "pago" | "cancelado" }
   | { action: "reports" };
@@ -160,6 +163,19 @@ async function listFotos(adminClient: SupabaseClient, params: ListParams) {
     : { data: [] as Array<{ id: number; nome: string | null }> };
 
   const userNameById = new Map<number, string>((usuarios ?? []).map((u) => [u.id, u.nome ?? "Sem nome"]));
+  const indicacaoIds = (indicacoes ?? []).map((i) => i.id);
+  const { data: commentCounts } = indicacaoIds.length
+    ? await adminClient
+        .from("indicacao_comentarios_admin")
+        .select("indicacao_id")
+        .in("indicacao_id", indicacaoIds)
+    : { data: [] as Array<{ indicacao_id: number }> };
+
+  const commentCountByIndicacaoId = new Map<number, number>();
+  for (const row of commentCounts ?? []) {
+    const prev = commentCountByIndicacaoId.get(row.indicacao_id) ?? 0;
+    commentCountByIndicacaoId.set(row.indicacao_id, prev + 1);
+  }
 
   const allPaths = Array.from(
     new Set(
@@ -194,6 +210,7 @@ async function listFotos(adminClient: SupabaseClient, params: ListParams) {
     foto_padrao_url: i.foto_padrao_url ? (signedUrlByPath.get(i.foto_padrao_url) ?? null) : null,
     foto_extra_1_url: i.foto_extra_1_url ? (signedUrlByPath.get(i.foto_extra_1_url) ?? null) : null,
     foto_extra_2_url: i.foto_extra_2_url ? (signedUrlByPath.get(i.foto_extra_2_url) ?? null) : null,
+    comments_count: commentCountByIndicacaoId.get(i.id) ?? 0,
     created_at: i.created_at,
   }));
 
@@ -314,6 +331,83 @@ async function listComissoes(adminClient: SupabaseClient, params: ListParams) {
   return { items, total: count ?? 0, page, limit };
 }
 
+async function listProjectComments(adminClient: SupabaseClient, indicacaoId: number, authUserId: string) {
+  const { data: comments, error } = await adminClient
+    .from("indicacao_comentarios_admin")
+    .select("id, indicacao_id, comentario, usuario_id, created_at")
+    .eq("indicacao_id", indicacaoId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  const userIds = Array.from(
+    new Set((comments ?? []).map((c) => c.usuario_id).filter((id): id is string => Boolean(id))),
+  );
+  const { data: usuarios } = userIds.length
+    ? await adminClient.from("usuarios").select("usuario_id, nome").in("usuario_id", userIds)
+    : { data: [] as Array<{ usuario_id: string; nome: string | null }> };
+
+  const userNameByAuthId = new Map<string, string>(
+    (usuarios ?? []).map((u) => [u.usuario_id, u.nome?.trim() || "Admin"]),
+  );
+
+  const items = (comments ?? []).map((c) => ({
+    id: c.id,
+    indicacao_id: c.indicacao_id,
+    comentario: c.comentario,
+    usuario_id: c.usuario_id,
+    usuario_nome: userNameByAuthId.get(c.usuario_id) ?? "Admin",
+    can_delete: c.usuario_id === authUserId,
+    created_at: c.created_at,
+  }));
+
+  return { items };
+}
+
+async function deleteProjectComment(
+  adminClient: SupabaseClient,
+  input: { commentId: number; authUserId: string },
+) {
+  const { data: row, error: fetchError } = await adminClient
+    .from("indicacao_comentarios_admin")
+    .select("id, usuario_id")
+    .eq("id", input.commentId)
+    .maybeSingle();
+  if (fetchError) throw fetchError;
+  if (!row?.id) throw new Error("NOT_FOUND");
+  if (row.usuario_id !== input.authUserId) throw new Error("FORBIDDEN");
+
+  const { error: deleteError } = await adminClient
+    .from("indicacao_comentarios_admin")
+    .delete()
+    .eq("id", input.commentId)
+    .eq("usuario_id", input.authUserId);
+  if (deleteError) throw deleteError;
+}
+
+async function addProjectComment(
+  adminClient: SupabaseClient,
+  input: { indicacaoId: number; comment: string; authUserId: string },
+) {
+  const comment = input.comment.trim();
+  if (!comment) throw new Error("Comentário vazio.");
+  if (comment.length > 1200) throw new Error("Comentário muito longo. Limite de 1200 caracteres.");
+
+  const { data: project, error: projectError } = await adminClient
+    .from("indicacoes")
+    .select("id")
+    .eq("id", input.indicacaoId)
+    .maybeSingle();
+  if (projectError) throw projectError;
+  if (!project?.id) throw new Error("NOT_FOUND");
+
+  const { error: insertError } = await adminClient.from("indicacao_comentarios_admin").insert({
+    indicacao_id: input.indicacaoId,
+    usuario_id: input.authUserId,
+    comentario: comment,
+  });
+  if (insertError) throw insertError;
+}
+
 async function getReports(adminClient: SupabaseClient) {
   const [indicacoesResp, comissoesResp, usuariosResp] = await Promise.all([
     listIndicacoes(adminClient, { page: 1, limit: 1000 }),
@@ -409,6 +503,36 @@ Deno.serve(async (req: Request) => {
         return jsonResponse(req, 200, { data: await listComissoes(adminClient, payload) });
       case "list_fotos":
         return jsonResponse(req, 200, { data: await listFotos(adminClient, payload) });
+      case "list_project_comments": {
+        const rawId = (payload as { indicacaoId?: unknown }).indicacaoId;
+        const indicacaoId = typeof rawId === "number" && Number.isFinite(rawId) ? rawId : Number(rawId);
+        if (!Number.isFinite(indicacaoId) || indicacaoId <= 0) {
+          return jsonResponse(req, 400, { error: "ID da indicação inválido." });
+        }
+        return jsonResponse(req, 200, { data: await listProjectComments(adminClient, indicacaoId, authUserId) });
+      }
+      case "add_project_comment": {
+        const rawId = (payload as { indicacaoId?: unknown }).indicacaoId;
+        const indicacaoId = typeof rawId === "number" && Number.isFinite(rawId) ? rawId : Number(rawId);
+        if (!Number.isFinite(indicacaoId) || indicacaoId <= 0) {
+          return jsonResponse(req, 400, { error: "ID da indicação inválido." });
+        }
+        await addProjectComment(adminClient, {
+          indicacaoId,
+          comment: payload.comment,
+          authUserId,
+        });
+        return jsonResponse(req, 200, { message: "Comentário adicionado com sucesso." });
+      }
+      case "delete_project_comment": {
+        const rawId = (payload as { commentId?: unknown }).commentId;
+        const commentId = typeof rawId === "number" && Number.isFinite(rawId) ? rawId : Number(rawId);
+        if (!Number.isFinite(commentId) || commentId <= 0) {
+          return jsonResponse(req, 400, { error: "ID do comentário inválido." });
+        }
+        await deleteProjectComment(adminClient, { commentId, authUserId });
+        return jsonResponse(req, 200, { message: "Comentário removido com sucesso." });
+      }
       case "delete_indicacao": {
         const rawId = (payload as unknown as { indicacaoId?: unknown }).indicacaoId;
         const indicacaoId = typeof rawId === "number" && Number.isFinite(rawId) ? rawId : Number(rawId);

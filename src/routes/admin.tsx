@@ -30,6 +30,7 @@ import { formatBRL, formatDate } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -95,6 +96,8 @@ function AdminRouteComponent() {
     created_at: string;
   } | null>(null);
   const [deleteIndicacaoPrompt, setDeleteIndicacaoPrompt] = useState<{ id: number; nome_indicado: string } | null>(null);
+  const [projectCommentsModal, setProjectCommentsModal] = useState<{ id: number; nome_indicado: string } | null>(null);
+  const [projectCommentText, setProjectCommentText] = useState("");
   const [adminFeedbackModal, setAdminFeedbackModal] = useState<{
     variant: "success" | "error";
     title: string;
@@ -209,6 +212,7 @@ function AdminRouteComponent() {
           foto_padrao_url: string | null;
           foto_extra_1_url: string | null;
           foto_extra_2_url: string | null;
+          comments_count: number;
           created_at: string;
         }[];
         total: number;
@@ -333,6 +337,24 @@ function AdminRouteComponent() {
         aggregates: { totalUsuarios: number; totalIndicacoes: number; totalComissoes: number; receitaPaga: number };
       }>({ action: "reports" }),
   });
+  const { data: projectCommentsResp, isLoading: loadingProjectComments } = useQuery({
+    queryKey: ["admin-project-comments", projectCommentsModal?.id],
+    enabled: Boolean(projectCommentsModal?.id),
+    retry: false,
+    refetchOnWindowFocus: false,
+    queryFn: () =>
+      callAdminOps<{
+        items: {
+          id: number;
+          indicacao_id: number;
+          comentario: string;
+          usuario_id: string;
+          usuario_nome: string;
+          can_delete: boolean;
+          created_at: string;
+        }[];
+      }>({ action: "list_project_comments", indicacaoId: projectCommentsModal!.id }),
+  });
 
   const promoteMutation = useMutation({
     mutationFn: (userId: string) => callAdminOpsMutation({ action: "set_user_role", userId, role: "admin" }),
@@ -418,6 +440,47 @@ function AdminRouteComponent() {
         title: "Não foi possível excluir",
         message: err.message || "Tente novamente em instantes. Se o erro continuar, confira o deploy da função admin-ops e a migration de permissão DELETE em indicacoes.",
       });
+    },
+  });
+  const addProjectCommentMutation = useMutation({
+    mutationFn: async () => {
+      if (!projectCommentsModal) throw new Error("Selecione um projeto.");
+      const comment = projectCommentText.trim();
+      if (!comment) throw new Error("Digite um comentário antes de enviar.");
+      await callAdminOpsMutation({
+        action: "add_project_comment",
+        indicacaoId: projectCommentsModal.id,
+        comment,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["admin-project-comments", projectCommentsModal?.id],
+      });
+      await queryClient.invalidateQueries({ queryKey: ["admin-fotos"] });
+      setProjectCommentText("");
+      toast.success("Comentário adicionado.");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Não foi possível adicionar o comentário.");
+    },
+  });
+  const deleteProjectCommentMutation = useMutation({
+    mutationFn: async (commentId: number) => {
+      await callAdminOpsMutation({
+        action: "delete_project_comment",
+        commentId,
+      });
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: ["admin-project-comments", projectCommentsModal?.id],
+      });
+      await queryClient.invalidateQueries({ queryKey: ["admin-fotos"] });
+      toast.success("Comentário excluído.");
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || "Não foi possível excluir o comentário.");
     },
   });
 
@@ -1615,6 +1678,17 @@ function AdminRouteComponent() {
                             type="button"
                             variant="outline"
                             className="h-8 px-3 text-xs"
+                            onClick={() => {
+                              setProjectCommentsModal({ id: f.id, nome_indicado: f.nome_indicado });
+                              setProjectCommentText("");
+                            }}
+                          >
+                            Comentários ({f.comments_count ?? 0})
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-8 px-3 text-xs"
                             onClick={() =>
                               setAvaliacaoModal({
                                 id: f.id,
@@ -2030,6 +2104,89 @@ function AdminRouteComponent() {
           </div>
         </div>
       )}
+
+      <Dialog
+        open={projectCommentsModal !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setProjectCommentsModal(null);
+            setProjectCommentText("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-xl rounded-2xl border-zinc-200">
+          <DialogHeader>
+            <DialogTitle className="text-zinc-900 text-left">Comentários do projeto</DialogTitle>
+            <DialogDescription className="text-left text-zinc-600 pt-1">
+              {projectCommentsModal?.nome_indicado}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="max-h-72 overflow-y-auto rounded-xl border border-zinc-200 bg-zinc-50 p-3 space-y-2">
+              {loadingProjectComments && (
+                <p className="text-sm text-zinc-500">Carregando comentários...</p>
+              )}
+              {!loadingProjectComments && (projectCommentsResp?.items?.length ?? 0) === 0 && (
+                <p className="text-sm text-zinc-500">Nenhum comentário ainda.</p>
+              )}
+              {!loadingProjectComments &&
+                (projectCommentsResp?.items ?? []).map((comment) => (
+                  <div key={comment.id} className="rounded-lg border border-zinc-200 bg-white p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs text-zinc-500">
+                        <span className="font-semibold text-zinc-700">{comment.usuario_nome}</span> • {formatDate(comment.created_at)}
+                      </p>
+                      {comment.can_delete && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-7 px-2 text-[11px] border-rose-200 text-rose-700 hover:bg-rose-50"
+                          disabled={deleteProjectCommentMutation.isPending}
+                          onClick={() => deleteProjectCommentMutation.mutate(comment.id)}
+                        >
+                          Excluir
+                        </Button>
+                      )}
+                    </div>
+                    <p className="text-sm text-zinc-800 mt-1 whitespace-pre-wrap">{comment.comentario}</p>
+                  </div>
+                ))}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="project-comment-text">Novo comentário</Label>
+              <Textarea
+                id="project-comment-text"
+                placeholder="Escreva um comentário sobre este projeto..."
+                value={projectCommentText}
+                onChange={(event) => setProjectCommentText(event.target.value)}
+                rows={4}
+                maxLength={1200}
+              />
+              <p className="text-xs text-zinc-500 text-right">{projectCommentText.length}/1200</p>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setProjectCommentsModal(null);
+                setProjectCommentText("");
+              }}
+              disabled={addProjectCommentMutation.isPending}
+            >
+              Fechar
+            </Button>
+            <Button
+              type="button"
+              onClick={() => addProjectCommentMutation.mutate()}
+              disabled={addProjectCommentMutation.isPending}
+            >
+              {addProjectCommentMutation.isPending ? "Enviando..." : "Comentar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={deleteIndicacaoPrompt !== null}
