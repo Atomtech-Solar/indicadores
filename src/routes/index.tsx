@@ -765,12 +765,12 @@ function SiteFooter() {
         </div>
 
         <div className="mt-12 border-t border-green-200 pt-6 flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8 text-sm max-[400px]:text-xs text-gray-500">
-          <p className="text-left">© 2025 ATOM TECH. Todos os direitos reservados.</p>
+          <p className="text-left">© 2026 ATOM TECH. Todos os direitos reservados.</p>
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 max-[400px]:gap-x-3 text-left">
-            <a href="#" className="transition-colors hover:text-green-600">Política de Privacidade</a>
-            <a href="#" className="transition-colors hover:text-green-600">Termos de Serviço</a>
-            <a href="#" className="transition-colors hover:text-green-600">Segurança</a>
-            <a href="#" className="transition-colors hover:text-green-600">Cookies</a>
+            <Link to="/politica-privacidade" className="transition-colors hover:text-green-600">Política de Privacidade</Link>
+            <Link to="/termos-servico" className="transition-colors hover:text-green-600">Termos de Serviço</Link>
+            <Link to="/seguranca" className="transition-colors hover:text-green-600">Segurança</Link>
+            <Link to="/politica-cookies" className="transition-colors hover:text-green-600">Cookies</Link>
           </div>
         </div>
       </div>

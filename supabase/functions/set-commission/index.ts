@@ -54,15 +54,26 @@ async function ensureAdmin(adminClient: SupabaseClient, authUserId: string): Pro
   }
 }
 
+async function getUserByAuthId(adminClient: SupabaseClient, authUserId: string) {
+  const { data, error } = await adminClient
+    .from("usuarios")
+    .select("id, nome")
+    .eq("usuario_id", authUserId)
+    .maybeSingle();
+  if (error || !data?.id) throw new Error("FORBIDDEN");
+  return data;
+}
+
 async function upsertCommissionByIndicacao(
   adminClient: SupabaseClient,
   indicacaoId: number,
   valorComissao: number,
   valorProjeto: number,
+  actor: { id: number; nome: string | null },
 ): Promise<void> {
   const { data: indicacao, error: indicacaoError } = await adminClient
     .from("indicacoes")
-    .select("id, usuario_id, status")
+    .select("id, usuario_id, status, nome_indicado")
     .eq("id", indicacaoId)
     .maybeSingle();
 
@@ -123,6 +134,38 @@ async function upsertCommissionByIndicacao(
   });
 
   if (activityError) throw new Error("ACTIVITY_LOG_FAILED");
+
+  const { data: admins } = await adminClient.from("usuarios").select("id").eq("role", "admin");
+  const adminNotifs = (admins ?? []).map((a) => ({
+    destinatario_usuario_id: a.id,
+    evento: "comissao_definida",
+    titulo: "Comissão definida",
+    mensagem: `${actor.nome ?? "Admin"} definiu comissão para ${indicacao.nome_indicado ?? `indicação #${indicacao.id}`}.`,
+    entidade_tipo: "indicacoes",
+    entidade_id: indicacao.id,
+    ator_usuario_id: actor.id,
+    ator_nome: actor.nome ?? "Admin",
+    metadata: {
+      valor_comissao: valorComissao,
+      valor_projeto: valorProjeto,
+    },
+  }));
+  adminNotifs.push({
+    destinatario_usuario_id: indicacao.usuario_id,
+    evento: "comissao_definida_indicador",
+    titulo: "Comissão atualizada",
+    mensagem: `Sua comissão da indicação "${indicacao.nome_indicado ?? indicacao.id}" foi definida em ${valorComissao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`,
+    entidade_tipo: "indicacoes",
+    entidade_id: indicacao.id,
+    ator_usuario_id: actor.id,
+    ator_nome: actor.nome ?? "Admin",
+    metadata: {
+      valor_comissao: valorComissao,
+      valor_projeto: valorProjeto,
+    },
+  });
+  const { error: notifError } = await adminClient.from("notificacoes").insert(adminNotifs);
+  if (notifError) throw new Error("NOTIFICATION_FAILED");
 }
 
 Deno.serve(async (req: Request) => {
@@ -139,6 +182,7 @@ Deno.serve(async (req: Request) => {
     const requesterId = await getRequesterUserId(anonClient, authHeader);
     if (!requesterId) return jsonResponse(req, 401, { error: "unauthorized" });
     await ensureAdmin(adminClient, requesterId);
+    const actor = await getUserByAuthId(adminClient, requesterId);
 
     const payload = (await req.json()) as Partial<SetCommissionPayload> & { valor?: number; indicacaoId?: number };
 
@@ -158,7 +202,7 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(req, 400, { error: "invalid_projeto" });
     }
 
-    await upsertCommissionByIndicacao(adminClient, indicacaoId, valorComissao, valorProjeto);
+    await upsertCommissionByIndicacao(adminClient, indicacaoId, valorComissao, valorProjeto, actor);
     return jsonResponse(req, 200, { message: "Comissão e faturamento definidos com sucesso." });
   } catch {
     return jsonResponse(req, 400, { error: "Não foi possível concluir a solicitação." });

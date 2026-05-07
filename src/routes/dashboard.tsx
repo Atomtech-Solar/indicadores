@@ -159,6 +159,7 @@ function Dashboard() {
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showNotificationsMenu, setShowNotificationsMenu] = useState(false);
   const [showSidebarMenu, setShowSidebarMenu] = useState(false);
   const [activeTab, setActiveTab] = useState<"visao-geral" | "indicacoes" | "comissoes" | "tutorial">("visao-geral");
   const [comissoesPeriodFilter, setComissoesPeriodFilter] = useState<"7d" | "30d" | "90d">("30d");
@@ -191,6 +192,60 @@ function Dashboard() {
   const { data: profile } = useQuery({
     queryKey: ["usuario"],
     queryFn: fetchUsuarioRow,
+  });
+  const { data: notifications = [] } = useQuery({
+    queryKey: ["notificacoes-indicador", profile?.id],
+    enabled: Boolean(profile?.id),
+    refetchOnWindowFocus: true,
+    refetchInterval: 15000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("notificacoes")
+        .select("id, titulo, mensagem, lida, created_at")
+        .eq("destinatario_usuario_id", profile!.id)
+        .order("created_at", { ascending: false })
+        .limit(15);
+      if (error) throw error;
+      return (data ?? []) as Array<{
+        id: number;
+        titulo: string;
+        mensagem: string;
+        lida: boolean;
+        created_at: string;
+      }>;
+    },
+  });
+  const unreadNotifications = useMemo(
+    () => notifications.filter((n) => !n.lida).length,
+    [notifications],
+  );
+  const markNotificationAsRead = useMutation({
+    mutationFn: async (notificationId: number) => {
+      const { error } = await supabase
+        .from("notificacoes")
+        .update({ lida: true })
+        .eq("id", notificationId);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["notificacoes-indicador"] });
+    },
+  });
+  const markAllNotificationsAsRead = useMutation({
+    mutationFn: async () => {
+      if (!profile?.id) return;
+      const unreadIds = notifications.filter((n) => !n.lida).map((n) => n.id);
+      if (!unreadIds.length) return;
+      const { error } = await supabase
+        .from("notificacoes")
+        .update({ lida: true })
+        .in("id", unreadIds)
+        .eq("destinatario_usuario_id", profile.id);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["notificacoes-indicador"] });
+    },
   });
 
   const { data: indicacoes = [], isLoading: loadingInd } = useQuery({
@@ -717,10 +772,65 @@ function Dashboard() {
             <button
               type="button"
               className="relative h-10 w-10 rounded-xl border border-border hover:bg-muted grid place-items-center transition"
+              onClick={() => {
+                setShowNotificationsMenu((prev) => !prev);
+                setShowProfileMenu(false);
+              }}
             >
               <Bell className="h-[18px] w-[18px] text-muted-foreground" />
-              <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary" />
+              {unreadNotifications > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground grid place-items-center leading-none">
+                  {unreadNotifications > 99 ? "99+" : unreadNotifications}
+                </span>
+              )}
             </button>
+            {showNotificationsMenu && (
+              <>
+                <button
+                  type="button"
+                  aria-label="Fechar notificações"
+                  onClick={() => setShowNotificationsMenu(false)}
+                  className="fixed inset-0 z-10 cursor-default"
+                />
+                <div className="absolute right-[88px] top-16 z-20 w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-card shadow-card p-2">
+                  <div className="flex items-center justify-between px-2 py-1.5">
+                    <p className="text-sm font-semibold text-zinc-900">Notificações</p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => markAllNotificationsAsRead.mutate()}
+                      disabled={markAllNotificationsAsRead.isPending || unreadNotifications === 0}
+                    >
+                      Marcar todas como lidas
+                    </Button>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto space-y-1 p-1">
+                    {notifications.length === 0 && (
+                      <div className="rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-sm text-zinc-500">
+                        Sem notificações no momento.
+                      </div>
+                    )}
+                    {notifications.map((n) => (
+                      <button
+                        key={n.id}
+                        type="button"
+                        className={`w-full rounded-lg border p-3 text-left transition ${
+                          n.lida ? "border-zinc-200 bg-white" : "border-emerald-200 bg-emerald-50/50"
+                        }`}
+                        onClick={() => {
+                          if (!n.lida) markNotificationAsRead.mutate(n.id);
+                        }}
+                      >
+                        <p className="text-xs text-zinc-500">{formatDate(n.created_at)}</p>
+                        <p className="text-sm font-semibold text-zinc-900 mt-0.5">{n.titulo}</p>
+                        <p className="text-sm text-zinc-700 mt-1">{n.mensagem}</p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
             <div className="relative">
               <button
                 type="button"

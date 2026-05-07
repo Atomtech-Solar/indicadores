@@ -21,6 +21,21 @@ type ActionPayload =
   | { action: "update_indicacao_status"; indicacaoId: number; status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido" }
   | { action: "list_comissoes"; page?: number; limit?: number; search?: string }
   | { action: "list_fotos"; page?: number; limit?: number; search?: string }
+  | {
+      action: "list_messages";
+      page?: number;
+      limit?: number;
+      search?: string;
+      category?: string;
+      onlyFavorites?: boolean;
+      sortBy?: "updated_at" | "usage_count" | "title";
+      sortOrder?: "asc" | "desc";
+    }
+  | { action: "create_message"; title: string; category: string; content: string; isFavorite?: boolean }
+  | { action: "update_message"; messageId: number; title: string; category: string; content: string; isFavorite?: boolean }
+  | { action: "delete_message"; messageId: number }
+  | { action: "toggle_favorite"; messageId: number; isFavorite: boolean }
+  | { action: "increment_usage"; messageId: number }
   | { action: "list_project_comments"; indicacaoId: number }
   | { action: "add_project_comment"; indicacaoId: number; comment: string }
   | { action: "delete_project_comment"; commentId: number }
@@ -29,6 +44,18 @@ type ActionPayload =
   | { action: "reports" };
 
 type ListParams = { page?: number; limit?: number; search?: string };
+
+type NotificationInsert = {
+  destinatario_usuario_id: number;
+  evento: string;
+  titulo: string;
+  mensagem: string;
+  entidade_tipo?: string;
+  entidade_id?: number;
+  ator_usuario_id?: number;
+  ator_nome?: string;
+  metadata?: Record<string, unknown>;
+};
 
 function normalizeListParams(input: ListParams) {
   const page = Number.isFinite(input.page) ? Math.max(1, Number(input.page)) : 1;
@@ -91,6 +118,50 @@ async function ensureAdmin(adminClient: SupabaseClient, authUserId: string): Pro
 
   if (error || data?.role !== "admin") {
     throw new Error("FORBIDDEN");
+  }
+}
+
+async function getUserByAuthId(adminClient: SupabaseClient, authUserId: string) {
+  const { data, error } = await adminClient
+    .from("usuarios")
+    .select("id, nome")
+    .eq("usuario_id", authUserId)
+    .maybeSingle();
+  if (error || !data?.id) throw new Error("FORBIDDEN");
+  return data;
+}
+
+async function listAdminIds(adminClient: SupabaseClient): Promise<number[]> {
+  const { data, error } = await adminClient
+    .from("usuarios")
+    .select("id")
+    .eq("role", "admin");
+  if (error) throw error;
+  return (data ?? []).map((row) => row.id);
+}
+
+async function createNotifications(adminClient: SupabaseClient, notifications: NotificationInsert[]) {
+  if (!notifications.length) return;
+  const payload = notifications.map((n) => ({
+    destinatario_usuario_id: n.destinatario_usuario_id,
+    evento: n.evento,
+    titulo: n.titulo,
+    mensagem: n.mensagem,
+    entidade_tipo: n.entidade_tipo ?? null,
+    entidade_id: n.entidade_id ?? null,
+    ator_usuario_id: n.ator_usuario_id ?? null,
+    ator_nome: n.ator_nome ?? null,
+    metadata: n.metadata ?? {},
+  }));
+  const { error } = await adminClient.from("notificacoes").insert(payload);
+  if (error) {
+    console.error(
+      JSON.stringify({
+        type: "admin_ops_notification_insert_failed",
+        message: error.message,
+        createdAt: new Date().toISOString(),
+      }),
+    );
   }
 }
 
@@ -215,6 +286,132 @@ async function listFotos(adminClient: SupabaseClient, params: ListParams) {
   }));
 
   return { items: withUrls, total: count ?? 0, page, limit };
+}
+
+function normalizeMessageInput(input: {
+  title: string;
+  category: string;
+  content: string;
+  isFavorite?: boolean;
+}) {
+  const title = input.title.trim();
+  const category = input.category.trim();
+  const content = input.content.replace(/\r\n/g, "\n").trim();
+  if (title.length < 3 || title.length > 120) {
+    throw new Error("Título inválido. Use entre 3 e 120 caracteres.");
+  }
+  if (category.length < 2 || category.length > 60) {
+    throw new Error("Categoria inválida.");
+  }
+  if (content.length < 5 || content.length > 5000) {
+    throw new Error("Conteúdo inválido. Use entre 5 e 5000 caracteres.");
+  }
+  return {
+    title,
+    category,
+    content,
+    is_favorite: Boolean(input.isFavorite),
+  };
+}
+
+async function listMessages(
+  adminClient: SupabaseClient,
+  params: ListParams & {
+    category?: string;
+    onlyFavorites?: boolean;
+    sortBy?: "updated_at" | "usage_count" | "title";
+    sortOrder?: "asc" | "desc";
+  },
+) {
+  const { page, limit, search, from, to } = normalizeListParams(params);
+  const category = (params.category ?? "").trim();
+  const sortBy = params.sortBy ?? "updated_at";
+  const sortOrder = params.sortOrder === "asc" ? "asc" : "desc";
+
+  let query = adminClient
+    .from("admin_messages")
+    .select("id, title, category, content, is_favorite, usage_count, created_at, updated_at, created_by", { count: "exact" })
+    .order(sortBy, { ascending: sortOrder === "asc" })
+    .order("updated_at", { ascending: false });
+
+  if (search) {
+    query = query.or(`title.ilike.%${search}%,content.ilike.%${search}%,category.ilike.%${search}%`);
+  }
+  if (category && category.toLowerCase() !== "todos") {
+    query = query.eq("category", category);
+  }
+  if (params.onlyFavorites) {
+    query = query.eq("is_favorite", true);
+  }
+
+  const { data: rows, count, error } = await query.range(from, to);
+  if (error) throw error;
+
+  const creatorIds = Array.from(new Set((rows ?? []).map((r) => r.created_by)));
+  const { data: creators } = creatorIds.length
+    ? await adminClient.from("usuarios").select("id, nome").in("id", creatorIds)
+    : { data: [] as Array<{ id: number; nome: string | null }> };
+  const creatorNameById = new Map<number, string>((creators ?? []).map((c) => [c.id, c.nome ?? "Admin"]));
+
+  const items = (rows ?? []).map((row) => ({
+    ...row,
+    created_by_name: creatorNameById.get(row.created_by) ?? "Admin",
+  }));
+
+  return { items, total: count ?? 0, page, limit };
+}
+
+async function createMessage(
+  adminClient: SupabaseClient,
+  actor: { id: number },
+  input: { title: string; category: string; content: string; isFavorite?: boolean },
+) {
+  const normalized = normalizeMessageInput(input);
+  const { error } = await adminClient.from("admin_messages").insert({
+    ...normalized,
+    created_by: actor.id,
+  });
+  if (error) throw error;
+}
+
+async function updateMessage(
+  adminClient: SupabaseClient,
+  input: { messageId: number; title: string; category: string; content: string; isFavorite?: boolean },
+) {
+  const normalized = normalizeMessageInput(input);
+  const { error } = await adminClient
+    .from("admin_messages")
+    .update(normalized)
+    .eq("id", input.messageId);
+  if (error) throw error;
+}
+
+async function deleteMessage(adminClient: SupabaseClient, messageId: number) {
+  const { error } = await adminClient.from("admin_messages").delete().eq("id", messageId);
+  if (error) throw error;
+}
+
+async function toggleFavorite(adminClient: SupabaseClient, messageId: number, isFavorite: boolean) {
+  const { error } = await adminClient
+    .from("admin_messages")
+    .update({ is_favorite: isFavorite })
+    .eq("id", messageId);
+  if (error) throw error;
+}
+
+async function incrementMessageUsage(adminClient: SupabaseClient, messageId: number) {
+  const { data: current, error: fetchError } = await adminClient
+    .from("admin_messages")
+    .select("id, usage_count")
+    .eq("id", messageId)
+    .maybeSingle();
+  if (fetchError) throw fetchError;
+  if (!current?.id) throw new Error("NOT_FOUND");
+  const { error } = await adminClient
+    .from("admin_messages")
+    .update({ usage_count: Number(current.usage_count ?? 0) + 1 })
+    .eq("id", messageId);
+  if (error) throw error;
 }
 
 function errorMessageFromUnknown(err: unknown): string {
@@ -469,6 +666,8 @@ Deno.serve(async (req: Request) => {
     const authUserId = await getRequesterUserId(anonClient, authHeader);
     if (!authUserId) return jsonResponse(req, 401, { error: "unauthorized" });
     await ensureAdmin(adminClient, authUserId);
+    const actor = await getUserByAuthId(adminClient, authUserId);
+    const adminIds = await listAdminIds(adminClient);
 
     const payload = (await req.json()) as ActionPayload;
 
@@ -478,31 +677,154 @@ Deno.serve(async (req: Request) => {
       case "list_users":
         return jsonResponse(req, 200, { data: await listUsers(adminClient, payload) });
       case "set_user_role": {
+        const { data: targetUser } = await adminClient
+          .from("usuarios")
+          .select("id, nome")
+          .eq("usuario_id", payload.userId)
+          .maybeSingle();
         const { error } = await adminClient.from("usuarios").update({ role: payload.role }).eq("usuario_id", payload.userId);
         if (error) throw error;
+        await createNotifications(
+          adminClient,
+          adminIds.map((destId) => ({
+            destinatario_usuario_id: destId,
+            evento: "admin_role_alterado",
+            titulo: "Permissão de usuário alterada",
+            mensagem: `${actor.nome ?? "Admin"} alterou ${targetUser?.nome ?? "usuário"} para ${payload.role}.`,
+            entidade_tipo: "usuarios",
+            entidade_id: targetUser?.id,
+            ator_usuario_id: actor.id,
+            ator_nome: actor.nome ?? "Admin",
+          })),
+        );
         return jsonResponse(req, 200, { message: "Role atualizado com sucesso." });
       }
       case "disable_user": {
+        const { data: targetUser } = await adminClient
+          .from("usuarios")
+          .select("id, nome")
+          .eq("usuario_id", payload.userId)
+          .maybeSingle();
         const { error } = await adminClient.auth.admin.updateUserById(payload.userId, { ban_duration: "876000h" });
         if (error) throw error;
+        await createNotifications(
+          adminClient,
+          adminIds.map((destId) => ({
+            destinatario_usuario_id: destId,
+            evento: "usuario_desativado",
+            titulo: "Usuário desativado",
+            mensagem: `${actor.nome ?? "Admin"} desativou ${targetUser?.nome ?? "usuário"}.`,
+            entidade_tipo: "usuarios",
+            entidade_id: targetUser?.id,
+            ator_usuario_id: actor.id,
+            ator_nome: actor.nome ?? "Admin",
+          })),
+        );
         return jsonResponse(req, 200, { message: "Usuário desativado com sucesso." });
       }
       case "reactivate_user": {
+        const { data: targetUser } = await adminClient
+          .from("usuarios")
+          .select("id, nome")
+          .eq("usuario_id", payload.userId)
+          .maybeSingle();
         const { error } = await adminClient.auth.admin.updateUserById(payload.userId, { ban_duration: "none" });
         if (error) throw error;
+        await createNotifications(
+          adminClient,
+          adminIds.map((destId) => ({
+            destinatario_usuario_id: destId,
+            evento: "usuario_reativado",
+            titulo: "Usuário reativado",
+            mensagem: `${actor.nome ?? "Admin"} reativou ${targetUser?.nome ?? "usuário"}.`,
+            entidade_tipo: "usuarios",
+            entidade_id: targetUser?.id,
+            ator_usuario_id: actor.id,
+            ator_nome: actor.nome ?? "Admin",
+          })),
+        );
         return jsonResponse(req, 200, { message: "Usuário reativado com sucesso." });
       }
       case "list_indicacoes":
         return jsonResponse(req, 200, { data: await listIndicacoes(adminClient, payload) });
       case "update_indicacao_status": {
+        const { data: indicacaoBefore } = await adminClient
+          .from("indicacoes")
+          .select("id, nome_indicado, status")
+          .eq("id", payload.indicacaoId)
+          .maybeSingle();
         const { error } = await adminClient.from("indicacoes").update({ status: payload.status }).eq("id", payload.indicacaoId);
         if (error) throw error;
+        await createNotifications(
+          adminClient,
+          adminIds.map((destId) => ({
+            destinatario_usuario_id: destId,
+            evento: "status_indicacao_alterado_admin",
+            titulo: "Status de projeto alterado",
+            mensagem: `${actor.nome ?? "Admin"} alterou ${indicacaoBefore?.nome_indicado ?? "indicação"} de ${indicacaoBefore?.status ?? "—"} para ${payload.status}.`,
+            entidade_tipo: "indicacoes",
+            entidade_id: payload.indicacaoId,
+            ator_usuario_id: actor.id,
+            ator_nome: actor.nome ?? "Admin",
+            metadata: {
+              status_anterior: indicacaoBefore?.status ?? null,
+              status_novo: payload.status,
+            },
+          })),
+        );
         return jsonResponse(req, 200, { message: "Status da indicação atualizado." });
       }
       case "list_comissoes":
         return jsonResponse(req, 200, { data: await listComissoes(adminClient, payload) });
       case "list_fotos":
         return jsonResponse(req, 200, { data: await listFotos(adminClient, payload) });
+      case "list_messages":
+        return jsonResponse(req, 200, { data: await listMessages(adminClient, payload) });
+      case "create_message":
+        await createMessage(adminClient, actor, payload);
+        return jsonResponse(req, 200, { message: "Mensagem criada com sucesso." });
+      case "update_message": {
+        const rawId = (payload as { messageId?: unknown }).messageId;
+        const messageId = typeof rawId === "number" && Number.isFinite(rawId) ? rawId : Number(rawId);
+        if (!Number.isFinite(messageId) || messageId <= 0) {
+          return jsonResponse(req, 400, { error: "ID da mensagem inválido." });
+        }
+        await updateMessage(adminClient, {
+          messageId,
+          title: payload.title,
+          category: payload.category,
+          content: payload.content,
+          isFavorite: payload.isFavorite,
+        });
+        return jsonResponse(req, 200, { message: "Mensagem atualizada com sucesso." });
+      }
+      case "delete_message": {
+        const rawId = (payload as { messageId?: unknown }).messageId;
+        const messageId = typeof rawId === "number" && Number.isFinite(rawId) ? rawId : Number(rawId);
+        if (!Number.isFinite(messageId) || messageId <= 0) {
+          return jsonResponse(req, 400, { error: "ID da mensagem inválido." });
+        }
+        await deleteMessage(adminClient, messageId);
+        return jsonResponse(req, 200, { message: "Mensagem excluída com sucesso." });
+      }
+      case "toggle_favorite": {
+        const rawId = (payload as { messageId?: unknown }).messageId;
+        const messageId = typeof rawId === "number" && Number.isFinite(rawId) ? rawId : Number(rawId);
+        if (!Number.isFinite(messageId) || messageId <= 0) {
+          return jsonResponse(req, 400, { error: "ID da mensagem inválido." });
+        }
+        await toggleFavorite(adminClient, messageId, Boolean(payload.isFavorite));
+        return jsonResponse(req, 200, { message: "Favorito atualizado com sucesso." });
+      }
+      case "increment_usage": {
+        const rawId = (payload as { messageId?: unknown }).messageId;
+        const messageId = typeof rawId === "number" && Number.isFinite(rawId) ? rawId : Number(rawId);
+        if (!Number.isFinite(messageId) || messageId <= 0) {
+          return jsonResponse(req, 400, { error: "ID da mensagem inválido." });
+        }
+        await incrementMessageUsage(adminClient, messageId);
+        return jsonResponse(req, 200, { message: "Uso incrementado." });
+      }
       case "list_project_comments": {
         const rawId = (payload as { indicacaoId?: unknown }).indicacaoId;
         const indicacaoId = typeof rawId === "number" && Number.isFinite(rawId) ? rawId : Number(rawId);
@@ -522,6 +844,24 @@ Deno.serve(async (req: Request) => {
           comment: payload.comment,
           authUserId,
         });
+        const { data: indicacao } = await adminClient
+          .from("indicacoes")
+          .select("id, nome_indicado")
+          .eq("id", indicacaoId)
+          .maybeSingle();
+        await createNotifications(
+          adminClient,
+          adminIds.map((destId) => ({
+            destinatario_usuario_id: destId,
+            evento: "comentario_projeto_adicionado",
+            titulo: "Novo comentário em projeto",
+            mensagem: `${actor.nome ?? "Admin"} comentou no projeto ${indicacao?.nome_indicado ?? `#${indicacaoId}`}.`,
+            entidade_tipo: "indicacoes",
+            entidade_id: indicacaoId,
+            ator_usuario_id: actor.id,
+            ator_nome: actor.nome ?? "Admin",
+          })),
+        );
         return jsonResponse(req, 200, { message: "Comentário adicionado com sucesso." });
       }
       case "delete_project_comment": {
@@ -531,6 +871,19 @@ Deno.serve(async (req: Request) => {
           return jsonResponse(req, 400, { error: "ID do comentário inválido." });
         }
         await deleteProjectComment(adminClient, { commentId, authUserId });
+        await createNotifications(
+          adminClient,
+          adminIds.map((destId) => ({
+            destinatario_usuario_id: destId,
+            evento: "comentario_projeto_removido",
+            titulo: "Comentário removido",
+            mensagem: `${actor.nome ?? "Admin"} removeu um comentário de projeto.`,
+            entidade_tipo: "indicacao_comentarios_admin",
+            entidade_id: commentId,
+            ator_usuario_id: actor.id,
+            ator_nome: actor.nome ?? "Admin",
+          })),
+        );
         return jsonResponse(req, 200, { message: "Comentário removido com sucesso." });
       }
       case "delete_indicacao": {
@@ -539,7 +892,25 @@ Deno.serve(async (req: Request) => {
         if (!Number.isFinite(indicacaoId) || indicacaoId <= 0) {
           return jsonResponse(req, 400, { error: "ID da indicação inválido." });
         }
+        const { data: project } = await adminClient
+          .from("indicacoes")
+          .select("id, nome_indicado")
+          .eq("id", indicacaoId)
+          .maybeSingle();
         await deleteIndicacao(adminClient, indicacaoId);
+        await createNotifications(
+          adminClient,
+          adminIds.map((destId) => ({
+            destinatario_usuario_id: destId,
+            evento: "projeto_excluido",
+            titulo: "Projeto excluído",
+            mensagem: `${actor.nome ?? "Admin"} excluiu o projeto ${project?.nome_indicado ?? `#${indicacaoId}`}.`,
+            entidade_tipo: "indicacoes",
+            entidade_id: indicacaoId,
+            ator_usuario_id: actor.id,
+            ator_nome: actor.nome ?? "Admin",
+          })),
+        );
         return jsonResponse(req, 200, { message: "Indicação excluída com sucesso." });
       }
       case "update_comissao_status": {
@@ -549,8 +920,31 @@ Deno.serve(async (req: Request) => {
         } else {
           patch.data_pagamento = null;
         }
+        const { data: commission } = await adminClient
+          .from("comissoes")
+          .select("id, indicacao_id, status")
+          .eq("id", payload.comissaoId)
+          .maybeSingle();
         const { error } = await adminClient.from("comissoes").update(patch).eq("id", payload.comissaoId);
         if (error) throw error;
+        await createNotifications(
+          adminClient,
+          adminIds.map((destId) => ({
+            destinatario_usuario_id: destId,
+            evento: "status_comissao_alterado",
+            titulo: "Status de comissão alterado",
+            mensagem: `${actor.nome ?? "Admin"} alterou comissão #${payload.comissaoId} de ${commission?.status ?? "—"} para ${payload.status}.`,
+            entidade_tipo: "comissoes",
+            entidade_id: payload.comissaoId,
+            ator_usuario_id: actor.id,
+            ator_nome: actor.nome ?? "Admin",
+            metadata: {
+              status_anterior: commission?.status ?? null,
+              status_novo: payload.status,
+              indicacao_id: commission?.indicacao_id ?? null,
+            },
+          })),
+        );
         return jsonResponse(req, 200, { message: "Status da comissão atualizado." });
       }
       case "reports":
