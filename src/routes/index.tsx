@@ -303,7 +303,7 @@ function Landing() {
           <div className="order-1 lg:order-2 shrink-0 w-full max-w-[300px] sm:max-w-[320px] md:max-w-[340px] lg:max-w-[min(100%,320px)] xl:max-w-[min(100%,360px)] mx-auto lg:mx-0">
             <div className="overflow-hidden rounded-2xl bg-[#111111] shadow-[0_20px_50px_-24px_rgba(0,0,0,0.35)]">
               <img
-                src="https://i.ibb.co/9H7fYbrQ/Sobre-Nos.png"
+                src="https://i.ibb.co/QFrWkmZh/Atomtech.jpg"
                 alt="Escritório Atom Tech — energia solar e tecnologia"
                 className="w-full h-auto object-cover aspect-square"
               />

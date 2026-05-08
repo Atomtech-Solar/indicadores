@@ -43,6 +43,8 @@ import {
 import { callAdminOps, callAdminOpsMutation, setCommission } from "@/lib/admin-edge";
 import { SITE_LOGO_URL } from "@/lib/site-logo";
 import { MessagesTab } from "@/components/admin/messages/messages-tab";
+import { AnalyticsTab } from "@/components/admin/analytics/analytics-tab";
+import { AdminMetricCard } from "@/components/admin/admin-metric-card";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -54,7 +56,7 @@ export const Route = createFileRoute("/admin")({
 function AdminRouteComponent() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<"overview" | "usuarios" | "indicacoes" | "comissoes" | "fotos" | "mensagens" | "relatorios" | "configuracoes">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "usuarios" | "indicacoes" | "comissoes" | "fotos" | "mensagens" | "analytics" | "configuracoes">("overview");
   const [commissionModal, setCommissionModal] = useState<{ indicacaoId: number; nomeIndicado: string } | null>(null);
   const [commissionValue, setCommissionValue] = useState("");
   const [projetoValue, setProjetoValue] = useState("");
@@ -111,7 +113,7 @@ function AdminRouteComponent() {
   const shouldLoadFotos = activeTab === "fotos";
   const shouldLoadIndicacoes = activeTab === "indicacoes" || activeTab === "comissoes";
   const shouldLoadComissoes = activeTab === "comissoes";
-  const shouldLoadReports = activeTab === "relatorios";
+  const shouldLoadAnalytics = activeTab === "analytics";
   const usuariosSearchDebounced = useDebouncedValue(usuariosSearch, 500);
   const indicacoesSearchDebounced = useDebouncedValue(indicacoesSearch, 500);
   const fotosSearchDebounced = useDebouncedValue(fotosSearch, 500);
@@ -390,18 +392,8 @@ function AdminRouteComponent() {
     [overview?.propostasNaoPagasLista],
   );
 
-  const { data: reports, isLoading: loadingReports } = useQuery({
-    queryKey: ["admin-reports"],
-    enabled: shouldLoadReports,
-    retry: false,
-    refetchOnWindowFocus: false,
-    queryFn: () =>
-      callAdminOps<{
-        ranking: { nome: string; totalIndicacoes: number; totalFechadas: number; receita: number }[];
-        conversionRate: number;
-        aggregates: { totalUsuarios: number; totalIndicacoes: number; totalComissoes: number; receitaPaga: number };
-      }>({ action: "reports" }),
-  });
+  // Action `reports` mantida no admin-ops como fallback legado;
+  // a aba ativa agora consome `admin-analytics` via AnalyticsTab.
   const { data: projectCommentsResp, isLoading: loadingProjectComments } = useQuery({
     queryKey: ["admin-project-comments", projectCommentsModal?.id],
     enabled: Boolean(projectCommentsModal?.id),
@@ -469,6 +461,7 @@ function AdminRouteComponent() {
       callAdminOpsMutation({ action: "update_indicacao_status", indicacaoId, status }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
       if (shouldLoadOverview) {
         await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
       }
@@ -484,7 +477,7 @@ function AdminRouteComponent() {
       await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes-elegiveis"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-comissoes"] });
-      await queryClient.invalidateQueries({ queryKey: ["admin-reports"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
       if (shouldLoadOverview) {
         await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
       }
@@ -554,6 +547,7 @@ function AdminRouteComponent() {
       callAdminOpsMutation({ action: "update_comissao_status", comissaoId, status }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin-comissoes"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
       if (shouldLoadOverview) {
         await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
       }
@@ -582,6 +576,7 @@ function AdminRouteComponent() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin-comissoes"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
       if (shouldLoadOverview) {
         await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
       }
@@ -613,7 +608,7 @@ function AdminRouteComponent() {
       { key: "indicacoes", label: "Status", icon: TrendingUp },
       { key: "comissoes", label: "Comissões", icon: Wallet },
       { key: "mensagens", label: "Central de Mensagens", icon: MessageSquareText },
-      { key: "relatorios", label: "Relatórios", icon: BarChart3 },
+      { key: "analytics", label: "Analytics", icon: BarChart3 },
       { key: "configuracoes", label: "Configurações", icon: Settings },
     ] as const,
     [],
@@ -1859,34 +1854,7 @@ function AdminRouteComponent() {
               </section>
             )}
 
-            {activeTab === "relatorios" && (
-              <div className="grid lg:grid-cols-[2fr_1fr] gap-5">
-                <section className="rounded-2xl border border-zinc-200 bg-white p-5 md:p-6">
-                  <h3 className="text-lg font-semibold text-zinc-900">Ranking de usuários</h3>
-                  <div className="mt-4 space-y-2">
-                    {loadingReports && <p className="text-sm text-zinc-500">Carregando relatórios...</p>}
-                    {(reports?.ranking ?? []).map((r, index) => (
-                      <div key={`${r.nome}-${index}`} className="rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2 flex items-center justify-between">
-                        <div>
-                          <p className="font-medium text-zinc-900">{r.nome}</p>
-                          <p className="text-xs text-zinc-600">{r.totalFechadas}/{r.totalIndicacoes} fechadas</p>
-                        </div>
-                        <p className="font-semibold text-emerald-600">{formatBRL(r.receita)}</p>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-zinc-200 bg-white p-5 md:p-6 space-y-3">
-                  <h3 className="text-lg font-semibold text-zinc-900">Métricas agregadas</h3>
-                  <MetricRow label="Taxa de conversão" value={`${(reports?.conversionRate ?? 0).toFixed(1)}%`} />
-                  <MetricRow label="Total usuários" value={String(reports?.aggregates.totalUsuarios ?? 0)} />
-                  <MetricRow label="Total indicações" value={String(reports?.aggregates.totalIndicacoes ?? 0)} />
-                  <MetricRow label="Total comissões" value={String(reports?.aggregates.totalComissoes ?? 0)} />
-                  <MetricRow label="Comissões pagas (valor)" value={formatBRL(reports?.aggregates.receitaPaga ?? 0)} />
-                </section>
-              </div>
-            )}
+            {activeTab === "analytics" && <AnalyticsTab enabled={shouldLoadAnalytics} />}
 
             {activeTab === "mensagens" && <MessagesTab />}
 
@@ -2404,42 +2372,11 @@ function AdminRouteComponent() {
   );
 }
 
-function AdminMetricCard({
-  label,
-  value,
-  icon: Icon,
-}: {
-  label: string;
-  value: string;
-  icon: React.ComponentType<{ className?: string }>;
-}) {
-  return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-4">
-      <div className="flex items-center gap-2 text-zinc-700">
-        <div className="h-8 w-8 rounded-full bg-emerald-100 text-emerald-700 grid place-items-center">
-          <Icon className="h-4 w-4" />
-        </div>
-        <p className="text-sm font-medium">{label}</p>
-      </div>
-      <p className="mt-2 text-2xl font-bold text-zinc-900">{value}</p>
-    </div>
-  );
-}
-
 function FunnelMini({ title, value }: { title: string; value: number }) {
   return (
     <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-center">
       <p className="text-xs text-zinc-600">{title}</p>
       <p className="text-xl font-bold text-zinc-900 mt-0.5">{value}</p>
-    </div>
-  );
-}
-
-function MetricRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between rounded-lg border border-zinc-100 bg-zinc-50 px-3 py-2">
-      <span className="text-sm text-zinc-700">{label}</span>
-      <span className="text-sm font-semibold text-zinc-900">{value}</span>
     </div>
   );
 }

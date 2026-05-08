@@ -45,17 +45,22 @@ type AdminAction =
   | { action: "delete_project_comment"; commentId: number }
   | { action: "delete_indicacao"; indicacaoId: number }
   | { action: "update_comissao_status"; comissaoId: number; status: "pendente" | "disponivel" | "pago" | "cancelado" }
-  | { action: "reports" };
+  | { action: "reports" }
+  | { action: "analytics_overview"; period: "7d" | "30d" | "90d" | "12m" | "all" };
 
 export async function callAdminOps<T>(payload: AdminAction): Promise<T> {
   const { data, error } = await supabase.functions.invoke("admin-ops", { body: payload });
-  if (error) throw new Error("Não foi possível concluir a operação administrativa.");
+  if (data && typeof data === "object" && "error" in data && data.error) {
+    throw new Error(typeof data.error === "string" ? data.error : "Não foi possível concluir a operação administrativa.");
+  }
+  if (error) {
+    throw new Error(await messageFromFunctionsInvokeError(error));
+  }
   if (!data) throw new Error("Resposta administrativa inválida.");
-  if (data.error) throw new Error("Não foi possível concluir a operação administrativa.");
   return data.data as T;
 }
 
-export async function callAdminOpsMutation(payload: Exclude<AdminAction, { action: "overview" | "list_users" | "list_indicacoes" | "list_comissoes" | "list_fotos" | "list_messages" | "list_project_comments" | "reports" }>): Promise<void> {
+export async function callAdminOpsMutation(payload: Exclude<AdminAction, { action: "overview" | "list_users" | "list_indicacoes" | "list_comissoes" | "list_fotos" | "list_messages" | "list_project_comments" | "reports" | "analytics_overview" }>): Promise<void> {
   const { data, error } = await supabase.functions.invoke("admin-ops", { body: payload });
 
   if (data && typeof data === "object" && "error" in data && data.error) {

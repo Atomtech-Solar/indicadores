@@ -41,7 +41,8 @@ type ActionPayload =
   | { action: "delete_project_comment"; commentId: number }
   | { action: "delete_indicacao"; indicacaoId: number }
   | { action: "update_comissao_status"; comissaoId: number; status: "pendente" | "disponivel" | "pago" | "cancelado" }
-  | { action: "reports" };
+  | { action: "reports" }
+  | { action: "analytics_overview"; period: "7d" | "30d" | "90d" | "12m" | "all" };
 
 type ListParams = { page?: number; limit?: number; search?: string };
 
@@ -167,6 +168,17 @@ async function createNotifications(adminClient: SupabaseClient, notifications: N
 
 async function getOverview(adminClient: SupabaseClient) {
   const { data, error } = await adminClient.rpc("get_admin_overview");
+  if (error) throw error;
+  return data;
+}
+
+async function getAnalyticsOverview(supabaseUrl: string, anonKey: string, authHeader: string, period: string) {
+  const allowed = new Set(["7d", "30d", "90d", "12m", "all"]);
+  const safePeriod = allowed.has(period) ? period : "30d";
+  const userClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const { data, error } = await userClient.rpc("get_admin_analytics", { p_period: safePeriod });
   if (error) throw error;
   return data;
 }
@@ -674,6 +686,8 @@ Deno.serve(async (req: Request) => {
     switch (payload.action) {
       case "overview":
         return jsonResponse(req, 200, { data: await getOverview(adminClient) });
+      case "analytics_overview":
+        return jsonResponse(req, 200, { data: await getAnalyticsOverview(supabaseUrl, anonKey, authHeader, payload.period) });
       case "list_users":
         return jsonResponse(req, 200, { data: await listUsers(adminClient, payload) });
       case "set_user_role": {
