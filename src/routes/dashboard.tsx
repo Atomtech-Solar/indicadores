@@ -1391,7 +1391,7 @@ function Dashboard() {
 
               <div className="mt-6 rounded-2xl border border-zinc-200 bg-white shadow-sm">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between px-4 md:px-5 py-4 border-b border-zinc-200">
-                  <h3 className="text-lg font-semibold text-zinc-900">Histórico de ganhos</h3>
+                  <h3 className="text-lg font-semibold text-zinc-900">Histórico de comissões</h3>
 
                   <div className="flex items-center gap-2">
                     <select
