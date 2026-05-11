@@ -79,8 +79,19 @@ function formatPotentialValue(value: number | null | undefined) {
   return formatBRL(Number(value));
 }
 
-function normalizeComissaoStatus(status: "pendente" | "disponivel" | "pago" | "cancelado") {
-  return status === "disponivel" ? "pendente" : status;
+function normalizeComissaoStatus(status: string | null | undefined): "pendente" | "pago" | "cancelado" {
+  const normalized = (status ?? "").trim().toLowerCase();
+  if (normalized === "pago") return "pago";
+  if (normalized === "cancelado") return "cancelado";
+  return "pendente";
+}
+
+function getComissaoReferenceDate(comissao: {
+  created_at: string;
+  updated_at?: string | null;
+  data_pagamento?: string | null;
+}) {
+  return comissao.data_pagamento || comissao.updated_at || comissao.created_at;
 }
 
 function last6MonthLabels() {
@@ -265,10 +276,12 @@ function Dashboard() {
 
   const { data: comissoes = [], isLoading: loadingCom } = useQuery({
     queryKey: ["comissoes"],
+    refetchOnWindowFocus: true,
+    refetchInterval: 15000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from("comissoes")
-        .select("id, indicacao_id, usuario_id, valor, status, created_at")
+        .select("id, indicacao_id, usuario_id, valor, status, created_at, updated_at, data_pagamento")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as Tables<"comissoes">[];
@@ -466,33 +479,40 @@ function Dashboard() {
     },
   });
 
-  const { data: comissoesFiltradasRpc = [] } = useQuery({
-    queryKey: ["comissoes-filtradas", comissoesPeriodFilter, comissoesStatusFilter],
-    enabled: activeTab === "comissoes",
-    refetchOnWindowFocus: true,
-    refetchInterval: 15000,
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_comissoes_filtradas", {
-        p_period: comissoesPeriodFilter,
-        p_status: comissoesStatusFilter,
-      });
-      if (error) throw error;
-      return (data ?? []) as Array<{
-        id: number;
-        valor: number;
-        status: "pendente" | "disponivel" | "pago" | "cancelado";
-        created_at: string;
-        nome_indicado: string;
-      }>;
-    },
-  });
+  const comissoesFiltradas = useMemo(() => {
+    const start = new Date();
+    if (comissoesPeriodFilter === "7d") {
+      start.setDate(start.getDate() - 7);
+    } else if (comissoesPeriodFilter === "30d") {
+      start.setDate(start.getDate() - 30);
+    } else {
+      start.setDate(start.getDate() - 90);
+    }
 
-  const comissoesTotalPages = Math.max(1, Math.ceil(comissoesFiltradasRpc.length / 5));
+    return comissoes
+      .filter((c) => {
+        const referenceDate = new Date(getComissaoReferenceDate(c));
+        if (Number.isNaN(referenceDate.getTime()) || referenceDate < start) {
+          return false;
+        }
+        if (comissoesStatusFilter === "all") return true;
+        if (comissoesStatusFilter === "pago") return c.status === "pago";
+        return normalizeComissaoStatus(c.status) === "pendente";
+      })
+      .map((c) => ({
+        ...c,
+        nome_indicado: indicacaoNomeById.get(Number(c.indicacao_id)) || `Comissão #${c.id}`,
+        reference_date: getComissaoReferenceDate(c),
+      }))
+      .sort((a, b) => new Date(b.reference_date).getTime() - new Date(a.reference_date).getTime());
+  }, [comissoes, comissoesPeriodFilter, comissoesStatusFilter, indicacaoNomeById]);
+
+  const comissoesTotalPages = Math.max(1, Math.ceil(comissoesFiltradas.length / 5));
   const comissoesPageSafe = Math.min(comissoesPage, comissoesTotalPages);
   const comissoesPaginadas = useMemo(() => {
     const start = (comissoesPageSafe - 1) * 5;
-    return comissoesFiltradasRpc.slice(start, start + 5);
-  }, [comissoesFiltradasRpc, comissoesPageSafe]);
+    return comissoesFiltradas.slice(start, start + 5);
+  }, [comissoesFiltradas, comissoesPageSafe]);
 
   useEffect(() => {
     setComissoesPage(1);
@@ -1419,7 +1439,7 @@ function Dashboard() {
                             {c.nome_indicado || `Comissão #${c.id}`}
                           </td>
                           <td className="py-3 px-4 md:px-5 text-zinc-600">
-                            {new Date(c.created_at).toLocaleDateString("pt-BR", {
+                            {new Date(c.reference_date).toLocaleDateString("pt-BR", {
                               day: "2-digit",
                               month: "2-digit",
                             })}
@@ -1503,7 +1523,7 @@ function Dashboard() {
                           <div className="mt-3 rounded-lg bg-zinc-50 p-3 text-sm text-zinc-700 space-y-1.5">
                             <p>
                               <span className="font-medium text-zinc-900">Data:</span>{" "}
-                              {new Date(c.created_at).toLocaleDateString("pt-BR", {
+                              {new Date(c.reference_date).toLocaleDateString("pt-BR", {
                                 day: "2-digit",
                                 month: "2-digit",
                               })}
@@ -1526,7 +1546,7 @@ function Dashboard() {
                   )}
                 </div>
 
-                {comissoesFiltradasRpc.length > 0 && (
+                {comissoesFiltradas.length > 0 && (
                   <div className="flex items-center justify-between border-t border-zinc-200 px-4 md:px-5 py-3">
                     <Button
                       type="button"
@@ -1560,12 +1580,11 @@ function Dashboard() {
                 <div>
                   <p className="text-base font-semibold text-zinc-900 leading-tight">Instruções</p>
                   <p className="text-sm text-zinc-600 mt-1">
-                    O total acumulado soma todos os valores das suas comissões, independentemente do
-                    status.
+                    O histórico abaixo considera a data mais recente da comissão
+                    (pagamento, atualização ou criação), para refletir melhor quando ela entrou no seu painel.
                   </p>
                   <p className="text-sm text-zinc-600">
-                    O saldo pendente considera só comissões marcadas como pendente; o total já pago,
-                    só as marcadas como pago.
+                    Use os filtros de período e status para localizar comissões pendentes ou pagas.
                   </p>
                 </div>
               </div>
