@@ -25,6 +25,7 @@ type AdminAction =
   | { action: "update_indicacao_status"; indicacaoId: number; status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido" }
   | { action: "list_comissoes"; page?: number; limit?: number; search?: string }
   | { action: "list_fotos"; page?: number; limit?: number; search?: string }
+  | { action: "list_message_recipients" }
   | {
       action: "list_messages";
       page?: number;
@@ -60,7 +61,7 @@ export async function callAdminOps<T>(payload: AdminAction): Promise<T> {
   return data.data as T;
 }
 
-export async function callAdminOpsMutation(payload: Exclude<AdminAction, { action: "overview" | "list_users" | "list_indicacoes" | "list_comissoes" | "list_fotos" | "list_messages" | "list_project_comments" | "reports" | "analytics_overview" }>): Promise<void> {
+export async function callAdminOpsMutation(payload: Exclude<AdminAction, { action: "overview" | "list_users" | "list_indicacoes" | "list_comissoes" | "list_fotos" | "list_message_recipients" | "list_messages" | "list_project_comments" | "reports" | "analytics_overview" }>): Promise<void> {
   const { data, error } = await supabase.functions.invoke("admin-ops", { body: payload });
 
   if (data && typeof data === "object" && "error" in data && data.error) {

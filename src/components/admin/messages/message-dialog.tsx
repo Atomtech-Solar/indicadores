@@ -94,7 +94,7 @@ export function MessageDialog({
               value={form.content}
               onChange={(event) => setForm((prev) => ({ ...prev, content: event.target.value }))}
               className="mt-1.5 min-h-36"
-              placeholder="Digite sua mensagem. Ex.: Olá {nome}, tudo bem com a {empresa_cliente}? Posso falar no {telefone}?"
+              placeholder="Digite sua mensagem. Ex.: Olá {nome}, tudo bem? Posso falar no {telefone}?"
               maxLength={5000}
             />
             <div className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
@@ -102,11 +102,9 @@ export function MessageDialog({
               {" "}
               <span className="font-mono text-zinc-800">{"{nome}"}</span>,
               {" "}
-              <span className="font-mono text-zinc-800">{"{empresa_cliente}"}</span>,
-              {" "}
               <span className="font-mono text-zinc-800">{"{telefone}"}</span>.
               <br />
-              Exemplo: <span className="font-mono text-zinc-800">Olá {"{nome}"}, recebi seu interesse para a {"{empresa_cliente}"}.</span>
+              Exemplo: <span className="font-mono text-zinc-800">Olá {"{nome}"}, posso falar com você no {"{telefone}"}?</span>
             </div>
             <p className="mt-1 text-xs text-zinc-500 text-right">{contentLength}/5000</p>
           </div>

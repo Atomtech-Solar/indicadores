@@ -21,6 +21,7 @@ type ActionPayload =
   | { action: "update_indicacao_status"; indicacaoId: number; status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido" }
   | { action: "list_comissoes"; page?: number; limit?: number; search?: string }
   | { action: "list_fotos"; page?: number; limit?: number; search?: string }
+  | { action: "list_message_recipients" }
   | {
       action: "list_messages";
       page?: number;
@@ -230,7 +231,7 @@ async function listFotos(adminClient: SupabaseClient, params: ListParams) {
   let query = adminClient
       .from("indicacoes")
       .select(
-        "id, usuario_id, nome_indicado, whatsapp, tipo_projeto, observacoes, status, conta_energia_url, foto_padrao_url, foto_extra_1_url, foto_extra_2_url, created_at",
+        "id, usuario_id, nome_indicado, whatsapp, tipo_projeto, observacoes, status, valor_potencial, valor_projeto, conta_energia_url, foto_padrao_url, foto_extra_1_url, foto_extra_2_url, created_at",
         { count: "exact" },
       )
       .order("created_at", { ascending: false });
@@ -247,6 +248,12 @@ async function listFotos(adminClient: SupabaseClient, params: ListParams) {
 
   const userNameById = new Map<number, string>((usuarios ?? []).map((u) => [u.id, u.nome ?? "Sem nome"]));
   const indicacaoIds = (indicacoes ?? []).map((i) => i.id);
+  const { data: comissoes } = indicacaoIds.length
+    ? await adminClient
+        .from("comissoes")
+        .select("id, indicacao_id, valor, status")
+        .in("indicacao_id", indicacaoIds)
+    : { data: [] as Array<{ id: number; indicacao_id: number; valor: number; status: "pendente" | "disponivel" | "pago" | "cancelado" }> };
   const { data: commentCounts } = indicacaoIds.length
     ? await adminClient
         .from("indicacao_comentarios_admin")
@@ -258,6 +265,16 @@ async function listFotos(adminClient: SupabaseClient, params: ListParams) {
   for (const row of commentCounts ?? []) {
     const prev = commentCountByIndicacaoId.get(row.indicacao_id) ?? 0;
     commentCountByIndicacaoId.set(row.indicacao_id, prev + 1);
+  }
+  const comissaoByIndicacaoId = new Map<number, { id: number; valor: number; status: "pendente" | "disponivel" | "pago" | "cancelado" }>();
+  for (const comissao of comissoes ?? []) {
+    if (!comissaoByIndicacaoId.has(comissao.indicacao_id)) {
+      comissaoByIndicacaoId.set(comissao.indicacao_id, {
+        id: comissao.id,
+        valor: Number(comissao.valor ?? 0),
+        status: comissao.status,
+      });
+    }
   }
 
   const allPaths = Array.from(
@@ -289,6 +306,11 @@ async function listFotos(adminClient: SupabaseClient, params: ListParams) {
     tipo_projeto: i.tipo_projeto,
     observacoes: i.observacoes,
     status: i.status,
+    valor_potencial: i.valor_potencial ?? null,
+    valor_projeto: i.valor_projeto ?? null,
+    comissao_id: comissaoByIndicacaoId.get(i.id)?.id ?? null,
+    comissao_valor: comissaoByIndicacaoId.get(i.id)?.valor ?? null,
+    comissao_status: comissaoByIndicacaoId.get(i.id)?.status ?? null,
     conta_energia_url: i.conta_energia_url ? (signedUrlByPath.get(i.conta_energia_url) ?? null) : null,
     foto_padrao_url: i.foto_padrao_url ? (signedUrlByPath.get(i.foto_padrao_url) ?? null) : null,
     foto_extra_1_url: i.foto_extra_1_url ? (signedUrlByPath.get(i.foto_extra_1_url) ?? null) : null,
@@ -572,6 +594,60 @@ async function listProjectComments(adminClient: SupabaseClient, indicacaoId: num
   return { items };
 }
 
+async function listMessageRecipients(adminClient: SupabaseClient) {
+  const { data: indicadores, error: indicatorsError } = await adminClient
+    .from("usuarios")
+    .select("id, nome, whatsapp")
+    .eq("role", "indicador")
+    .order("nome", { ascending: true });
+
+  if (indicatorsError) throw indicatorsError;
+
+  const indicatorIds = (indicadores ?? []).map((item) => item.id);
+  const { data: indicados, error: indicatedsError } = indicatorIds.length
+    ? await adminClient
+        .from("indicacoes")
+        .select("id, usuario_id, nome_indicado, whatsapp, created_at")
+        .in("usuario_id", indicatorIds)
+        .order("created_at", { ascending: false })
+    : {
+        data: [] as Array<{
+          id: number;
+          usuario_id: number;
+          nome_indicado: string;
+          whatsapp: string | null;
+          created_at: string;
+        }>,
+        error: null,
+      };
+
+  if (indicatedsError) throw indicatedsError;
+
+  const indicadosByIndicatorId = new Map<
+    number,
+    Array<{ id: number; nome: string; whatsapp: string | null }>
+  >();
+
+  for (const indicado of indicados ?? []) {
+    const current = indicadosByIndicatorId.get(indicado.usuario_id) ?? [];
+    current.push({
+      id: indicado.id,
+      nome: indicado.nome_indicado,
+      whatsapp: indicado.whatsapp ?? null,
+    });
+    indicadosByIndicatorId.set(indicado.usuario_id, current);
+  }
+
+  return {
+    indicadores: (indicadores ?? []).map((indicador) => ({
+      id: indicador.id,
+      nome: indicador.nome ?? "Sem nome",
+      whatsapp: indicador.whatsapp ?? null,
+      indicados: indicadosByIndicatorId.get(indicador.id) ?? [],
+    })),
+  };
+}
+
 async function deleteProjectComment(
   adminClient: SupabaseClient,
   input: { commentId: number; authUserId: string },
@@ -792,6 +868,8 @@ Deno.serve(async (req: Request) => {
         return jsonResponse(req, 200, { data: await listComissoes(adminClient, payload) });
       case "list_fotos":
         return jsonResponse(req, 200, { data: await listFotos(adminClient, payload) });
+      case "list_message_recipients":
+        return jsonResponse(req, 200, { data: await listMessageRecipients(adminClient) });
       case "list_messages":
         return jsonResponse(req, 200, { data: await listMessages(adminClient, payload) });
       case "create_message":

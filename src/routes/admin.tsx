@@ -53,11 +53,32 @@ export const Route = createFileRoute("/admin")({
   component: AdminRouteComponent,
 });
 
+type ProjetoFotoSlot = {
+  label: string;
+  url: string | null;
+};
+
+type ProjetoFotoSelecionada = {
+  label: string;
+  url: string;
+};
+
+type ProjetoComissaoStatus = "pendente" | "disponivel" | "pago" | "cancelado";
+
+type CommissionModalState = {
+  indicacaoId: number;
+  nomeIndicado: string;
+  valorComissaoAtual: number | null;
+  valorProjetoAtual: number | null;
+  comissaoId: number | null;
+  comissaoStatus: ProjetoComissaoStatus | null;
+};
+
 function AdminRouteComponent() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<"overview" | "usuarios" | "indicacoes" | "comissoes" | "fotos" | "mensagens" | "analytics" | "configuracoes">("overview");
-  const [commissionModal, setCommissionModal] = useState<{ indicacaoId: number; nomeIndicado: string } | null>(null);
+  const [activeTab, setActiveTab] = useState<"overview" | "usuarios" | "comissoes" | "fotos" | "mensagens" | "analytics" | "configuracoes">("overview");
+  const [commissionModal, setCommissionModal] = useState<CommissionModalState | null>(null);
   const [commissionValue, setCommissionValue] = useState("");
   const [projetoValue, setProjetoValue] = useState("");
   const [fotosSearch, setFotosSearch] = useState("");
@@ -81,14 +102,18 @@ function AdminRouteComponent() {
     nome: string;
     nextRole: "indicador" | "admin";
   } | null>(null);
-  const [indicacoesSearch, setIndicacoesSearch] = useState("");
-  const [indicacoesPage, setIndicacoesPage] = useState(1);
   const [actionIndicacaoModal, setActionIndicacaoModal] = useState<{
     id: number;
     nome_indicado: string;
+    statusLabelAtual: string;
+    statusAtual: "enviado" | "analise" | "negociacao" | "fechado" | "perdido";
     status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido";
   } | null>(null);
-  const [zoomedFotoUrl, setZoomedFotoUrl] = useState<string | null>(null);
+  const [fotosProjetoModal, setFotosProjetoModal] = useState<{
+    nomeIndicado: string;
+    fotos: ProjetoFotoSlot[];
+  } | null>(null);
+  const [fotoProjetoSelecionada, setFotoProjetoSelecionada] = useState<ProjetoFotoSelecionada | null>(null);
   const [showSidebarMenu, setShowSidebarMenu] = useState(false);
   const [showNotificationsMenu, setShowNotificationsMenu] = useState(false);
   const [avaliacaoModal, setAvaliacaoModal] = useState<{
@@ -111,11 +136,9 @@ function AdminRouteComponent() {
   const shouldLoadOverview = activeTab === "overview";
   const shouldLoadUsuarios = activeTab === "usuarios";
   const shouldLoadFotos = activeTab === "fotos";
-  const shouldLoadIndicacoes = activeTab === "indicacoes" || activeTab === "comissoes";
   const shouldLoadComissoes = activeTab === "comissoes";
   const shouldLoadAnalytics = activeTab === "analytics";
   const usuariosSearchDebounced = useDebouncedValue(usuariosSearch, 500);
-  const indicacoesSearchDebounced = useDebouncedValue(indicacoesSearch, 500);
   const fotosSearchDebounced = useDebouncedValue(fotosSearch, 500);
   const comissoesDefinicaoSearchDebounced = useDebouncedValue(comissoesDefinicaoSearch, 500);
   const comissoesHistoricoSearchDebounced = useDebouncedValue(comissoesHistoricoSearch, 500);
@@ -137,6 +160,83 @@ function AdminRouteComponent() {
     const digits = (value ?? "").replace(/\D/g, "");
     if (!digits) return null;
     return `https://wa.me/${digits}`;
+  };
+  const contarFotosProjetoDisponiveis = (projeto: {
+    conta_energia_url: string | null;
+    foto_padrao_url: string | null;
+    foto_extra_1_url: string | null;
+    foto_extra_2_url: string | null;
+  }) => montarSlotsFotosProjeto(projeto).filter((slot) => Boolean(slot.url)).length;
+  const montarSlotsFotosProjeto = (projeto: {
+    conta_energia_url: string | null;
+    foto_padrao_url: string | null;
+    foto_extra_1_url: string | null;
+    foto_extra_2_url: string | null;
+  }): ProjetoFotoSlot[] => [
+    { label: "Conta de energia", url: projeto.conta_energia_url },
+    { label: "Padrão elétrico", url: projeto.foto_padrao_url },
+    { label: "Foto extra 1", url: projeto.foto_extra_1_url },
+    { label: "Foto extra 2", url: projeto.foto_extra_2_url },
+  ];
+  const abrirFotosProjetoModal = (projeto: {
+    nome_indicado: string;
+    conta_energia_url: string | null;
+    foto_padrao_url: string | null;
+    foto_extra_1_url: string | null;
+    foto_extra_2_url: string | null;
+  }) => {
+    setFotoProjetoSelecionada(null);
+    setFotosProjetoModal({
+      nomeIndicado: projeto.nome_indicado,
+      fotos: montarSlotsFotosProjeto(projeto),
+    });
+  };
+  const fecharFotosProjetoModal = () => {
+    setFotoProjetoSelecionada(null);
+    setFotosProjetoModal(null);
+  };
+  const abrirStatusProjetoModal = (projeto: {
+    id: number;
+    nome_indicado: string;
+    status: "enviado" | "recebido" | "analise" | "negociacao" | "fechado" | "perdido" | "pago" | null;
+  }) => {
+    const statusAtual =
+      projeto.status === "recebido" || projeto.status == null
+        ? "enviado"
+        : projeto.status === "pago"
+          ? "fechado"
+          : projeto.status;
+    setActionIndicacaoModal({
+      id: projeto.id,
+      nome_indicado: projeto.nome_indicado,
+      statusLabelAtual: getProjetoStatusTheme(projeto.status).label,
+      statusAtual,
+      status: statusAtual,
+    });
+  };
+  const abrirComissaoProjetoModal = (projeto: {
+    id: number;
+    nome_indicado: string;
+    valor_potencial: number | null;
+    valor_projeto: number | null;
+    comissao_id: number | null;
+    comissao_status: ProjetoComissaoStatus | null;
+  }) => {
+    setCommissionModal({
+      indicacaoId: projeto.id,
+      nomeIndicado: projeto.nome_indicado,
+      valorComissaoAtual: projeto.valor_potencial,
+      valorProjetoAtual: projeto.valor_projeto,
+      comissaoId: projeto.comissao_id,
+      comissaoStatus: projeto.comissao_status,
+    });
+    setCommissionValue(projeto.valor_potencial != null ? String(projeto.valor_potencial) : "");
+    setProjetoValue(projeto.valor_projeto != null ? String(projeto.valor_projeto) : "");
+  };
+  const fecharComissaoProjetoModal = () => {
+    setCommissionModal(null);
+    setCommissionValue("");
+    setProjetoValue("");
   };
 
   const { data: overview, isLoading: loadingOverview } = useQuery({
@@ -275,6 +375,11 @@ function AdminRouteComponent() {
           tipo_projeto: string | null;
           observacoes: string | null;
           status: "enviado" | "recebido" | "analise" | "negociacao" | "fechado" | "perdido" | "pago" | null;
+          valor_potencial: number | null;
+          valor_projeto: number | null;
+          comissao_id: number | null;
+          comissao_valor: number | null;
+          comissao_status: ProjetoComissaoStatus | null;
           conta_energia_url: string | null;
           foto_padrao_url: string | null;
           foto_extra_1_url: string | null;
@@ -286,31 +391,6 @@ function AdminRouteComponent() {
         page: number;
         limit: number;
       }>({ action: "list_fotos", page: fotosPage, limit: PAGE_SIZE, search: fotosSearchDebounced }),
-  });
-
-  const { data: indicacoesResp, isLoading: loadingIndicacoes } = useQuery({
-    queryKey: ["admin-indicacoes", indicacoesPage, indicacoesSearchDebounced],
-    enabled: shouldLoadIndicacoes,
-    retry: false,
-    refetchOnWindowFocus: false,
-    queryFn: () =>
-      callAdminOps<{
-        items: {
-          id: number;
-          usuario_id: number;
-          usuario_nome: string;
-          nome_indicado: string;
-          tipo: string;
-          status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido";
-          valor_potencial: number | null;
-          valor_projeto: number | null;
-          created_at: string;
-          updated_at: string;
-        }[];
-        total: number;
-        page: number;
-        limit: number;
-      }>({ action: "list_indicacoes", page: indicacoesPage, limit: PAGE_SIZE, search: indicacoesSearchDebounced }),
   });
 
   const { data: comissoesResp, isLoading: loadingComissoes } = useQuery({
@@ -365,13 +445,11 @@ function AdminRouteComponent() {
   });
 
   const usuarios = usuariosResp?.items ?? [];
-  const indicacoes = indicacoesResp?.items ?? [];
   const fotos = fotosResp?.items ?? [];
   const comissoes = comissoesResp?.items ?? [];
   const indicacoesElegiveisComissaoPaginadas = indicacoesElegiveisResp?.items ?? [];
   const comissoesHistoricoPaginadas = comissoes;
   const usuariosTotalPages = Math.max(1, Math.ceil((usuariosResp?.total ?? 0) / PAGE_SIZE));
-  const indicacoesTotalPages = Math.max(1, Math.ceil((indicacoesResp?.total ?? 0) / PAGE_SIZE));
   const fotosTotalPages = Math.max(1, Math.ceil((fotosResp?.total ?? 0) / PAGE_SIZE));
   const comissoesDefinicaoTotalPages = Math.max(1, Math.ceil((indicacoesElegiveisResp?.total ?? 0) / PAGE_SIZE));
   const comissoesHistoricoTotalPages = Math.max(1, Math.ceil((comissoesResp?.total ?? 0) / PAGE_SIZE));
@@ -460,6 +538,7 @@ function AdminRouteComponent() {
     mutationFn: ({ indicacaoId, status }: { indicacaoId: number; status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido" }) =>
       callAdminOpsMutation({ action: "update_indicacao_status", indicacaoId, status }),
     onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin-fotos"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
       if (shouldLoadOverview) {
@@ -481,14 +560,15 @@ function AdminRouteComponent() {
       if (shouldLoadOverview) {
         await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
       }
-      setZoomedFotoUrl(null);
+      setFotoProjetoSelecionada(null);
+      setFotosProjetoModal(null);
       setAvaliacaoModal(null);
       setDeleteIndicacaoPrompt(null);
       setAdminFeedbackModal({
         variant: "success",
         title: "Projeto excluído",
         message:
-          "A indicação foi removida do banco. Ela some na aba Status, em Projetos e na dashboard do indicador (comissões vinculadas também são apagadas).",
+          "A indicação foi removida do banco. Ela some em Projetos e na dashboard do indicador (comissões vinculadas também são apagadas).",
       });
     },
     onError: (err: Error) => {
@@ -546,11 +626,13 @@ function AdminRouteComponent() {
     mutationFn: ({ comissaoId, status }: { comissaoId: number; status: "pendente" | "disponivel" | "pago" | "cancelado" }) =>
       callAdminOpsMutation({ action: "update_comissao_status", comissaoId, status }),
     onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin-fotos"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-comissoes"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
       if (shouldLoadOverview) {
         await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
       }
+      fecharComissaoProjetoModal();
       toast.success("Status da comissão atualizado.");
     },
     onError: () => toast.error("Não foi possível atualizar a comissão."),
@@ -574,6 +656,7 @@ function AdminRouteComponent() {
       });
     },
     onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin-fotos"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-comissoes"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
@@ -581,9 +664,7 @@ function AdminRouteComponent() {
         await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
       }
       toast.success("Comissão definida com sucesso.");
-      setCommissionModal(null);
-      setCommissionValue("");
-      setProjetoValue("");
+      fecharComissaoProjetoModal();
     },
     onError: (error: Error) => {
       toast.error(error.message || "Não foi possível definir a comissão.");
@@ -605,44 +686,83 @@ function AdminRouteComponent() {
       { key: "overview", label: "Overview", icon: LayoutDashboard },
       { key: "usuarios", label: "Usuários", icon: Users },
       { key: "fotos", label: "Projetos", icon: ImageIcon },
-      { key: "indicacoes", label: "Status", icon: TrendingUp },
-      { key: "comissoes", label: "Comissões", icon: Wallet },
       { key: "mensagens", label: "Central de Mensagens", icon: MessageSquareText },
       { key: "analytics", label: "Analytics", icon: BarChart3 },
       { key: "configuracoes", label: "Configurações", icon: Settings },
     ] as const,
     [],
   );
-
-  const formatIndicacaoStatusLabel = (status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido") => {
-    if (status === "enviado") return "recebido";
-    return status;
-  };
   const getProjetoStatusTheme = (
     rawStatus: "enviado" | "recebido" | "analise" | "negociacao" | "fechado" | "perdido" | "pago" | null | undefined,
   ) => {
     const status = (rawStatus ?? "").trim().toLowerCase();
     if (!status || status === "enviado" || status === "recebido") {
       return {
-        cardClass: "border-red-500 bg-red-100",
+        cardClass: "border-sky-300 bg-sky-50/70",
         label: "recebido",
+        buttonClass: "border-sky-300 text-sky-700 hover:bg-sky-50",
       };
     }
     if (status === "analise" || status === "negociacao") {
       return {
         cardClass: "border-amber-300 bg-amber-50/70",
         label: status,
+        buttonClass: "border-amber-300 text-amber-700 hover:bg-amber-50",
       };
     }
     if (status === "fechado" || status === "pago") {
       return {
         cardClass: "border-emerald-300 bg-emerald-50/70",
         label: status,
+        buttonClass: "border-emerald-300 text-emerald-700 hover:bg-emerald-50",
       };
     }
     return {
-      cardClass: "border-sky-300 bg-sky-50/70",
+      cardClass: "border-red-500 bg-red-100",
       label: "perdido",
+      buttonClass: "border-red-300 text-red-700 hover:bg-red-50",
+    };
+  };
+  const getProjetoComissaoTheme = (projeto: {
+    status: "enviado" | "recebido" | "analise" | "negociacao" | "fechado" | "perdido" | "pago" | null;
+    comissao_id: number | null;
+    comissao_status: ProjetoComissaoStatus | null;
+  }) => {
+    if (projeto.comissao_id && projeto.comissao_status) {
+      if (projeto.comissao_status === "pago") {
+        return {
+          label: "Comissão: pago",
+          className: "border-emerald-300 text-emerald-700 hover:bg-emerald-50",
+          disabled: false,
+        };
+      }
+      if (projeto.comissao_status === "disponivel") {
+        return {
+          label: "Comissão: disponível",
+          className: "border-sky-300 text-sky-700 hover:bg-sky-50",
+          disabled: false,
+        };
+      }
+      if (projeto.comissao_status === "cancelado") {
+        return {
+          label: "Comissão: cancelada",
+          className: "border-rose-300 text-rose-700 hover:bg-rose-50",
+          disabled: false,
+        };
+      }
+      return {
+        label: "Comissão: pendente",
+        className: "border-amber-300 text-amber-700 hover:bg-amber-50",
+        disabled: false,
+      };
+    }
+
+    const status = (projeto.status ?? "").trim().toLowerCase();
+    const canDefine = status === "negociacao" || status === "fechado" || status === "pago";
+    return {
+      label: "Definir comissão",
+      className: canDefine ? "" : "border-zinc-200 text-zinc-400 hover:bg-transparent",
+      disabled: !canDefine,
     };
   };
 
@@ -653,7 +773,6 @@ function AdminRouteComponent() {
   };
   useEffect(() => {
     if (usuariosPage > usuariosTotalPages) setUsuariosPage(usuariosTotalPages);
-    if (indicacoesPage > indicacoesTotalPages) setIndicacoesPage(indicacoesTotalPages);
     if (fotosPage > fotosTotalPages) setFotosPage(fotosTotalPages);
     if (comissoesDefinicaoPage > comissoesDefinicaoTotalPages) setComissoesDefinicaoPage(comissoesDefinicaoTotalPages);
     if (comissoesHistoricoPage > comissoesHistoricoTotalPages) setComissoesHistoricoPage(comissoesHistoricoTotalPages);
@@ -662,8 +781,6 @@ function AdminRouteComponent() {
   }, [
     usuariosPage,
     usuariosTotalPages,
-    indicacoesPage,
-    indicacoesTotalPages,
     fotosPage,
     fotosTotalPages,
     comissoesDefinicaoPage,
@@ -1309,141 +1426,6 @@ function AdminRouteComponent() {
               </section>
             )}
 
-            {activeTab === "indicacoes" && (
-              <section className="rounded-2xl border border-zinc-200 bg-white">
-                <div className="px-5 py-4 border-b border-zinc-200">
-                  <h3 className="text-lg font-semibold text-zinc-900">Indicações globais</h3>
-                  <div className="mt-3">
-                    <Input
-                      value={indicacoesSearch}
-                      onChange={(e) => {
-                        setIndicacoesSearch(e.target.value);
-                        setIndicacoesPage(1);
-                      }}
-                      placeholder='Buscar por usuário, indicado, tipo, status, valores ou data (ex.: "fechado", "negociação")'
-                      className="h-10"
-                    />
-                  </div>
-                </div>
-                <div className="max-[700px]:hidden overflow-x-auto">
-                  <table className="w-full text-sm min-w-[980px]">
-                    <thead>
-                      <tr className="text-left border-b border-zinc-200">
-                        <th className="px-5 py-3">Usuário</th>
-                        <th className="px-5 py-3">Nome indicado</th>
-                        <th className="px-5 py-3">Tipo</th>
-                        <th className="px-5 py-3">Status</th>
-                        <th className="px-5 py-3">Comissão (pot.)</th>
-                        <th className="px-5 py-3">Projeto</th>
-                        <th className="px-5 py-3">Data</th>
-                        <th className="px-5 py-3 text-right">Ações</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-100">
-                      {loadingIndicacoes && (
-                        <tr>
-                          <td colSpan={8} className="px-5 py-6 text-center text-zinc-500">
-                            Carregando indicações...
-                          </td>
-                        </tr>
-                      )}
-                      {!loadingIndicacoes && indicacoes.length === 0 && (
-                        <tr>
-                          <td colSpan={8} className="px-5 py-6 text-center text-zinc-500">
-                            Nenhuma indicação encontrada para o filtro informado.
-                          </td>
-                        </tr>
-                      )}
-                      {indicacoes.map((i) => (
-                        <tr key={i.id}>
-                          <td className="px-5 py-3">{i.usuario_nome}</td>
-                          <td className="px-5 py-3">{i.nome_indicado}</td>
-                          <td className="px-5 py-3">{i.tipo}</td>
-                          <td className="px-5 py-3">{formatIndicacaoStatusLabel(i.status)}</td>
-                          <td className="px-5 py-3">
-                            {i.valor_potencial == null ? "—" : formatBRL(Number(i.valor_potencial))}
-                          </td>
-                          <td className="px-5 py-3">
-                            {i.valor_projeto == null ? "—" : formatBRL(Number(i.valor_projeto))}
-                          </td>
-                          <td className="px-5 py-3">{formatDate(i.created_at)}</td>
-                          <td className="px-5 py-3 text-right">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setActionIndicacaoModal({
-                                  id: i.id,
-                                  nome_indicado: i.nome_indicado,
-                                  status: i.status,
-                                })
-                              }
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
-                              aria-label="Abrir ações da indicação"
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="hidden max-[700px]:grid gap-3 p-4">
-                  {loadingIndicacoes && (
-                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
-                      Carregando indicações...
-                    </div>
-                  )}
-                  {!loadingIndicacoes && indicacoes.length === 0 && (
-                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
-                      Nenhuma indicação encontrada para o filtro informado.
-                    </div>
-                  )}
-                  {!loadingIndicacoes &&
-                    indicacoes.map((i) => (
-                      <div key={`mob-ind-${i.id}`} className="rounded-xl border border-zinc-200 bg-white p-4">
-                        <p className="text-sm font-semibold text-zinc-900">{i.nome_indicado}</p>
-                        <p className="mt-1 text-xs text-zinc-600">Usuário: {i.usuario_nome}</p>
-                        <div className="mt-2 space-y-1 text-sm text-zinc-700">
-                          <p><span className="font-medium text-zinc-900">Tipo:</span> {i.tipo}</p>
-                          <p><span className="font-medium text-zinc-900">Status:</span> {formatIndicacaoStatusLabel(i.status)}</p>
-                          <p><span className="font-medium text-zinc-900">Comissão (pot.):</span> {i.valor_potencial == null ? "—" : formatBRL(Number(i.valor_potencial))}</p>
-                          <p><span className="font-medium text-zinc-900">Projeto:</span> {i.valor_projeto == null ? "—" : formatBRL(Number(i.valor_projeto))}</p>
-                          <p><span className="font-medium text-zinc-900">Data:</span> {formatDate(i.created_at)}</p>
-                        </div>
-                        <div className="mt-3 flex justify-end">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setActionIndicacaoModal({
-                                id: i.id,
-                                nome_indicado: i.nome_indicado,
-                                status: i.status,
-                              })
-                            }
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
-                            aria-label="Abrir ações da indicação"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-                {(indicacoesResp?.total ?? 0) > 0 && (
-                  <div className="flex items-center justify-between border-t border-zinc-200 px-5 py-3">
-                    <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => setIndicacoesPage((p) => Math.max(1, p - 1))} disabled={indicacoesPage === 1}>
-                      Anterior
-                    </Button>
-                    <p className="text-sm font-medium text-zinc-700">{indicacoesPage}/{indicacoesTotalPages}</p>
-                    <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => setIndicacoesPage((p) => Math.min(indicacoesTotalPages, p + 1))} disabled={indicacoesPage === indicacoesTotalPages}>
-                      Próxima
-                    </Button>
-                  </div>
-                )}
-              </section>
-            )}
-
             {activeTab === "comissoes" && (
               <div className="space-y-5">
                 <section className="rounded-2xl border border-zinc-200 bg-white">
@@ -1479,7 +1461,7 @@ function AdminRouteComponent() {
                             <td colSpan={5} className="px-5 py-6 text-center text-zinc-500">Carregando indicações...</td>
                           </tr>
                         )}
-                        {!loadingIndicacoes && indicacoesElegiveisComissaoPaginadas.length === 0 && (
+                        {!loadingIndicacoesElegiveis && indicacoesElegiveisComissaoPaginadas.length === 0 && (
                           <tr>
                             <td colSpan={5} className="px-5 py-6 text-center text-zinc-500">
                               Nenhuma indicação encontrada para o filtro informado.
@@ -1498,7 +1480,18 @@ function AdminRouteComponent() {
                                 <Button
                                   size="sm"
                                   type="button"
-                                  onClick={() => setCommissionModal({ indicacaoId: i.id, nomeIndicado: i.nome_indicado })}
+                                  onClick={() => {
+                                    setCommissionModal({
+                                      indicacaoId: i.id,
+                                      nomeIndicado: i.nome_indicado,
+                                      valorComissaoAtual: i.valor_potencial,
+                                      valorProjetoAtual: i.valor_projeto,
+                                      comissaoId: null,
+                                      comissaoStatus: null,
+                                    });
+                                    setCommissionValue(i.valor_potencial != null ? String(i.valor_potencial) : "");
+                                    setProjetoValue(i.valor_projeto != null ? String(i.valor_projeto) : "");
+                                  }}
                                 >
                                   Definir comissão
                                 </Button>
@@ -1527,7 +1520,22 @@ function AdminRouteComponent() {
                             <p><span className="font-medium text-zinc-900">Valor potencial:</span> {i.valor_potencial == null ? "Ainda não definido" : formatBRL(Number(i.valor_potencial))}</p>
                           </div>
                           <div className="mt-3 flex justify-end">
-                            <Button size="sm" type="button" onClick={() => setCommissionModal({ indicacaoId: i.id, nomeIndicado: i.nome_indicado })}>
+                            <Button
+                              size="sm"
+                              type="button"
+                              onClick={() => {
+                                setCommissionModal({
+                                  indicacaoId: i.id,
+                                  nomeIndicado: i.nome_indicado,
+                                  valorComissaoAtual: i.valor_potencial,
+                                  valorProjetoAtual: i.valor_projeto,
+                                  comissaoId: null,
+                                  comissaoStatus: null,
+                                });
+                                setCommissionValue(i.valor_potencial != null ? String(i.valor_potencial) : "");
+                                setProjetoValue(i.valor_projeto != null ? String(i.valor_projeto) : "");
+                              }}
+                            >
                               Definir comissão
                             </Button>
                           </div>
@@ -1699,11 +1707,11 @@ function AdminRouteComponent() {
                   <h3 className="text-lg font-semibold text-zinc-900">Projetos</h3>
                   <p className="text-sm text-zinc-600 mt-1">
                     Indicações enviadas, com ou sem anexos. Excluir remove o registro no Supabase
-                    (comissões vinculadas são removidas) e some na aba Status e na dashboard do indicador.
+                    (comissões vinculadas são removidas) e some de Projetos e da dashboard do indicador.
                   </p>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
-                    <span className="inline-flex items-center rounded-full border border-red-500 bg-red-100 px-2.5 py-1 font-medium text-red-800">
-                      Vermelho: chegou agora (recebido)
+                    <span className="inline-flex items-center rounded-full border border-sky-300 bg-sky-50 px-2.5 py-1 font-medium text-sky-700">
+                      Azul: chegou agora (recebido)
                     </span>
                     <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 font-medium text-amber-700">
                       Amarelo: em análise / negociação
@@ -1711,8 +1719,8 @@ function AdminRouteComponent() {
                     <span className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">
                       Verde: finalizado (fechado/pago)
                     </span>
-                    <span className="inline-flex items-center rounded-full border border-sky-300 bg-sky-50 px-2.5 py-1 font-medium text-sky-700">
-                      Azul: perdido
+                    <span className="inline-flex items-center rounded-full border border-red-500 bg-red-100 px-2.5 py-1 font-medium text-red-800">
+                      Vermelho: perdido
                     </span>
                   </div>
                   <div className="mt-3">
@@ -1735,105 +1743,107 @@ function AdminRouteComponent() {
                     </div>
                   )}
                   {!loadingFotos &&
-                    fotos.map((f) => (
-                      <div
-                        key={f.id}
-                        className={`rounded-2xl border p-4 md:p-5 shadow-sm ${getProjetoStatusTheme(f.status).cardClass}`}
-                      >
-                        <div className="mb-3">
-                          <p className="text-sm text-zinc-600">Indicador</p>
-                          <p className="font-semibold text-zinc-900">{f.usuario_nome}</p>
-                          <p className="text-xs text-zinc-500 mt-1">
-                            Indicado: {f.nome_indicado} • {formatDate(f.created_at)}
-                          </p>
-                          <p className="text-xs text-zinc-700 mt-1">
-                            <span className="font-medium">WhatsApp do indicado:</span> {f.whatsapp?.trim() || "Não informado"}
-                          </p>
-                          <p className="text-xs text-zinc-700 mt-1">
-                            <span className="font-medium">Solução:</span>{" "}
-                            {formatTipoProjeto(f.tipo_projeto)}
-                          </p>
-                          <p className="text-xs text-zinc-700 mt-1">
-                            <span className="font-medium">Status:</span> {getProjetoStatusTheme(f.status).label}
-                          </p>
-                          <p className="text-xs text-zinc-700 mt-1">
-                            <span className="font-medium">Observações:</span> {f.observacoes?.trim() || "Sem observações."}
-                          </p>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3">
-                          {(
-                            [
-                              { label: "Conta de energia", url: f.conta_energia_url },
-                              { label: "Padrão elétrico", url: f.foto_padrao_url },
-                              { label: "Foto extra 1", url: f.foto_extra_1_url },
-                              { label: "Foto extra 2", url: f.foto_extra_2_url },
-                            ] as const
-                          ).map((slot) => (
-                            <div key={slot.label} className="rounded-lg border border-zinc-200 p-2">
-                              <p className="text-xs font-medium text-zinc-700 mb-2">{slot.label}</p>
-                              {slot.url ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setZoomedFotoUrl(slot.url)}
-                                  className="block w-full overflow-hidden rounded-md"
-                                >
-                                  <img
-                                    src={slot.url}
-                                    alt={slot.label}
-                                    className="h-36 w-full rounded-md object-cover"
-                                  />
-                                </button>
-                              ) : (
-                                <div className="h-36 rounded-md bg-zinc-100 grid place-items-center text-xs text-zinc-500">
-                                  Sem foto
-                                </div>
-                              )}
+                    fotos.map((f) => {
+                      const projetoStatusTheme = getProjetoStatusTheme(f.status);
+                      const projetoComissaoTheme = getProjetoComissaoTheme(f);
+                      return (
+                        <div
+                          key={f.id}
+                          className={`flex h-full flex-col rounded-2xl border p-4 md:p-5 shadow-sm ${projetoStatusTheme.cardClass}`}
+                        >
+                          <div className="mb-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm text-zinc-600">Indicador</p>
+                                <p className="font-semibold text-zinc-900">{f.usuario_nome}</p>
+                              </div>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-8 w-8 border-rose-200 px-0 text-rose-700 hover:bg-rose-50"
+                                disabled={deleteIndicacaoMutation.isPending}
+                                onClick={() => setDeleteIndicacaoPrompt({ id: f.id, nome_indicado: f.nome_indicado })}
+                                aria-label="Excluir projeto"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
                             </div>
-                          ))}
+                            <p className="text-xs text-zinc-500 mt-1">
+                              Indicado: {f.nome_indicado} • {formatDate(f.created_at)}
+                            </p>
+                            <p className="text-xs text-zinc-700 mt-1">
+                              <span className="font-medium">WhatsApp do indicado:</span> {f.whatsapp?.trim() || "Não informado"}
+                            </p>
+                            <p className="text-xs text-zinc-700 mt-1">
+                              <span className="font-medium">Solução:</span>{" "}
+                              {formatTipoProjeto(f.tipo_projeto)}
+                            </p>
+                            <p className="text-xs text-zinc-700 mt-1">
+                              <span className="font-medium">Status:</span> {projetoStatusTheme.label}
+                            </p>
+                            <p className="text-xs text-zinc-700 mt-1">
+                              <span className="font-medium">Observações:</span> {f.observacoes?.trim() || "Sem observações."}
+                            </p>
+                          </div>
+                          <div className="mt-auto flex flex-wrap gap-2 pt-4 sm:justify-end">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className={`h-8 w-full px-3 text-xs sm:w-auto ${projetoStatusTheme.buttonClass}`}
+                              onClick={() => abrirStatusProjetoModal(f)}
+                            >
+                              Status: {projetoStatusTheme.label}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className={`h-8 w-full px-3 text-xs sm:w-auto ${projetoComissaoTheme.className}`}
+                              onClick={() => abrirComissaoProjetoModal(f)}
+                              disabled={projetoComissaoTheme.disabled}
+                            >
+                              {projetoComissaoTheme.label}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-8 w-full px-3 text-xs sm:w-auto"
+                              onClick={() => abrirFotosProjetoModal(f)}
+                            >
+                              Fotos {contarFotosProjetoDisponiveis(f)}/4
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-8 w-full px-3 text-xs sm:w-auto"
+                              onClick={() => {
+                                setProjectCommentsModal({ id: f.id, nome_indicado: f.nome_indicado });
+                                setProjectCommentText("");
+                              }}
+                            >
+                              Comentários ({f.comments_count ?? 0})
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-8 w-full px-3 text-xs sm:w-auto"
+                              onClick={() =>
+                                setAvaliacaoModal({
+                                  id: f.id,
+                                  usuario_nome: f.usuario_nome,
+                                  nome_indicado: f.nome_indicado,
+                                  whatsapp: f.whatsapp,
+                                  tipo_projeto: f.tipo_projeto,
+                                  observacoes: f.observacoes,
+                                  created_at: f.created_at,
+                                })
+                              }
+                            >
+                              Ver mais
+                            </Button>
+                          </div>
                         </div>
-                        <div className="mt-3 flex flex-wrap justify-end gap-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="h-8 px-3 text-xs"
-                            onClick={() => {
-                              setProjectCommentsModal({ id: f.id, nome_indicado: f.nome_indicado });
-                              setProjectCommentText("");
-                            }}
-                          >
-                            Comentários ({f.comments_count ?? 0})
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="h-8 px-3 text-xs"
-                            onClick={() =>
-                              setAvaliacaoModal({
-                                id: f.id,
-                                usuario_nome: f.usuario_nome,
-                                nome_indicado: f.nome_indicado,
-                                whatsapp: f.whatsapp,
-                                tipo_projeto: f.tipo_projeto,
-                                observacoes: f.observacoes,
-                                created_at: f.created_at,
-                              })
-                            }
-                          >
-                            Ver mais
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="h-8 px-3 text-xs border-rose-200 text-rose-700 hover:bg-rose-50"
-                            disabled={deleteIndicacaoMutation.isPending}
-                            onClick={() => setDeleteIndicacaoPrompt({ id: f.id, nome_indicado: f.nome_indicado })}
-                          >
-                            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                            Excluir
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   {!loadingFotos && fotos.length === 0 && (
                     <div className="rounded-2xl border border-zinc-200 bg-white p-6 text-sm text-zinc-500">
                       Nenhum projeto encontrado para o filtro informado.
@@ -1876,10 +1886,24 @@ function AdminRouteComponent() {
       {commissionModal && (
         <div className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[1px] p-4 grid place-items-center">
           <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6">
-            <h3 className="text-lg font-semibold text-zinc-900">Definir comissão</h3>
+            <h3 className="text-lg font-semibold text-zinc-900">Comissão do projeto</h3>
             <p className="text-sm text-zinc-600 mt-1">
               Indicação: <span className="font-medium text-zinc-900">{commissionModal.nomeIndicado}</span>
             </p>
+
+            <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+              <p className="text-sm font-medium text-zinc-900">Valores atualmente definidos</p>
+              <div className="mt-2 space-y-1 text-sm text-zinc-700">
+                <p>
+                  <span className="font-medium text-zinc-900">Comissão atual:</span>{" "}
+                  {commissionModal.valorComissaoAtual != null ? formatBRL(Number(commissionModal.valorComissaoAtual)) : "Ainda não definida"}
+                </p>
+                <p>
+                  <span className="font-medium text-zinc-900">Valor do projeto atual:</span>{" "}
+                  {commissionModal.valorProjetoAtual != null ? formatBRL(Number(commissionModal.valorProjetoAtual)) : "Ainda não definido"}
+                </p>
+              </div>
+            </div>
 
             <div className="mt-4 space-y-4">
               <div>
@@ -1910,25 +1934,51 @@ function AdminRouteComponent() {
               </div>
             </div>
 
+            {commissionModal.comissaoId && commissionModal.comissaoStatus && (
+              <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                <p className="text-sm font-medium text-zinc-900">Pagamento da comissão</p>
+                <p className="mt-1 text-sm text-zinc-600">
+                  Status atual: <span className="font-medium text-zinc-900">{commissionModal.comissaoStatus}</span>
+                </p>
+                <div className="mt-3 flex flex-wrap justify-end gap-2">
+                  {commissionModal.comissaoStatus === "pago" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                      onClick={() => updateComissaoMutation.mutate({ comissaoId: commissionModal.comissaoId!, status: "pendente" })}
+                      disabled={updateComissaoMutation.isPending}
+                    >
+                      Marcar como não pago
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      onClick={() => updateComissaoMutation.mutate({ comissaoId: commissionModal.comissaoId!, status: "pago" })}
+                      disabled={updateComissaoMutation.isPending}
+                    >
+                      Marcar como pago
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="mt-6 flex items-center justify-end gap-2">
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => {
-                  setCommissionModal(null);
-                  setCommissionValue("");
-                  setProjetoValue("");
-                }}
-                disabled={setCommissionMutation.isPending}
+                onClick={fecharComissaoProjetoModal}
+                disabled={setCommissionMutation.isPending || updateComissaoMutation.isPending}
               >
-                Cancelar
+                Fechar
               </Button>
               <Button
                 type="button"
                 onClick={() => setCommissionMutation.mutate()}
                 disabled={setCommissionMutation.isPending}
               >
-                {setCommissionMutation.isPending ? "Salvando..." : "Confirmar"}
+                {setCommissionMutation.isPending ? "Salvando..." : commissionModal.comissaoId ? "Atualizar comissão" : "Definir comissão"}
               </Button>
             </div>
           </div>
@@ -2070,13 +2120,16 @@ function AdminRouteComponent() {
       {actionIndicacaoModal && (
         <div className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[1px] p-4 grid place-items-center">
           <div className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-5">
-            <h3 className="text-lg font-semibold text-zinc-900">Ações da indicação</h3>
+            <h3 className="text-lg font-semibold text-zinc-900">Status do projeto</h3>
             <p className="text-sm text-zinc-600 mt-1">
               {actionIndicacaoModal.nome_indicado}
             </p>
+            <div className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm text-zinc-700">
+              <span className="font-medium text-zinc-900">Status atual:</span> {actionIndicacaoModal.statusLabelAtual}
+            </div>
 
             <div className="mt-4">
-              <Label htmlFor="indicacao-status-admin">Status</Label>
+              <Label htmlFor="indicacao-status-admin">Novo status</Label>
               <select
                 id="indicacao-status-admin"
                 className="mt-1.5 h-10 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-700"
@@ -2122,32 +2175,96 @@ function AdminRouteComponent() {
         </div>
       )}
 
-      {zoomedFotoUrl && (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/80 p-4"
-          onClick={() => setZoomedFotoUrl(null)}
-          role="presentation"
-        >
-          <div className="flex max-h-[90vh] max-w-[90vw] flex-col items-center gap-3" onClick={(e) => e.stopPropagation()}>
-            <img src={zoomedFotoUrl} alt="Foto ampliada" className="max-h-[82vh] max-w-[90vw] rounded-xl object-contain" />
-            <div className="flex flex-wrap items-center justify-center gap-2">
-              <Button asChild type="button" variant="secondary">
-                <a href={zoomedFotoUrl} download target="_blank" rel="noreferrer">
-                  <Download className="mr-2 h-4 w-4" />
-                  Download
-                </a>
-              </Button>
-              <Button type="button" variant="outline" className="border-zinc-300 bg-white/95" onClick={() => setZoomedFotoUrl(null)}>
-                Fechar
-              </Button>
+      {fotosProjetoModal && (
+        <div className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[1px] p-4 grid place-items-center">
+          <div className="w-full max-w-5xl rounded-2xl border border-zinc-200 bg-white p-5 md:p-6">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-zinc-900">
+                  {fotoProjetoSelecionada ? fotoProjetoSelecionada.label : "Fotos do projeto"}
+                </h3>
+                <p className="mt-1 text-sm text-zinc-600">
+                  Indicado: <span className="font-medium text-zinc-900">{fotosProjetoModal.nomeIndicado}</span>
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {fotoProjetoSelecionada && (
+                  <Button type="button" variant="ghost" onClick={() => setFotoProjetoSelecionada(null)}>
+                    Voltar
+                  </Button>
+                )}
+                <Button type="button" variant="outline" onClick={fecharFotosProjetoModal}>
+                  Fechar
+                </Button>
+              </div>
             </div>
+
+            {fotoProjetoSelecionada ? (
+              <div className="mt-5">
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-3">
+                  <div className="mb-3 flex items-center justify-between gap-3 rounded-xl bg-white px-3 py-2">
+                    <p className="text-sm font-medium text-zinc-800">{fotoProjetoSelecionada.label}</p>
+                    <p className="text-xs text-zinc-500">Visualizacao individual</p>
+                  </div>
+                  <div className="flex max-h-[70vh] items-center justify-center overflow-hidden rounded-2xl bg-white p-3">
+                    <img
+                      src={fotoProjetoSelecionada.url}
+                      alt={fotoProjetoSelecionada.label}
+                      className="max-h-[62vh] w-auto max-w-full rounded-xl object-contain"
+                    />
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  <Button asChild type="button" variant="secondary">
+                    <a href={fotoProjetoSelecionada.url} download target="_blank" rel="noreferrer">
+                      <Download className="mr-2 h-4 w-4" />
+                      Download
+                    </a>
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-5 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 md:p-4">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white px-3 py-2">
+                  <p className="text-sm font-medium text-zinc-800">Selecione uma foto para ampliar</p>
+                  <p className="text-xs text-zinc-500">
+                    {fotosProjetoModal.fotos.filter((slot) => Boolean(slot.url)).length}/4 disponiveis
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {fotosProjetoModal.fotos.map((slot) => (
+                  <div key={slot.label} className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
+                    <p className="text-xs font-medium text-zinc-700">{slot.label}</p>
+                    {slot.url ? (
+                      <button
+                        type="button"
+                        className="mt-2 block w-full overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50 transition hover:border-zinc-300"
+                        onClick={() =>
+                          setFotoProjetoSelecionada({
+                            label: slot.label,
+                            url: slot.url!,
+                          })
+                        }
+                      >
+                        <img src={slot.url} alt={slot.label} className="h-48 w-full object-cover" />
+                      </button>
+                    ) : (
+                      <div className="mt-2 grid h-48 place-items-center rounded-lg border border-dashed border-zinc-200 bg-white text-xs text-zinc-400">
+                        Sem foto
+                      </div>
+                    )}
+                  </div>
+                ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {avaliacaoModal && (
         <div className="fixed inset-0 z-50 bg-black/35 backdrop-blur-[1px] p-4 grid place-items-center">
-          <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-5">
+          <div className="w-full max-w-lg rounded-2xl border border-zinc-200 bg-white p-5">
             <h3 className="text-lg font-semibold text-zinc-900">Detalhes do projeto</h3>
             <div className="mt-3 space-y-2 text-sm text-zinc-700">
               <p><span className="font-medium text-zinc-900">Indicador:</span> {avaliacaoModal.usuario_nome}</p>
@@ -2157,11 +2274,11 @@ function AdminRouteComponent() {
               <p><span className="font-medium text-zinc-900">Observações:</span> {avaliacaoModal.observacoes?.trim() || "Sem observações."}</p>
               <p><span className="font-medium text-zinc-900">Data:</span> {formatDate(avaliacaoModal.created_at)}</p>
             </div>
-            <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
+            <div className="mt-5 flex flex-nowrap justify-end gap-2">
               <Button
                 type="button"
                 variant="outline"
-                className="border-rose-200 text-rose-700 hover:bg-rose-50"
+                className="shrink-0 border-rose-200 text-rose-700 hover:bg-rose-50"
                 disabled={deleteIndicacaoMutation.isPending}
                 onClick={() => {
                   const target = {
@@ -2175,24 +2292,23 @@ function AdminRouteComponent() {
                 <Trash2 className="h-4 w-4 mr-2" />
                 Excluir projeto
               </Button>
-              <div className="flex flex-wrap justify-end gap-2">
-                <Button type="button" variant="secondary" onClick={() => setAvaliacaoModal(null)}>
-                  Fechar
-                </Button>
-                <Button
-                  asChild
-                  type="button"
-                  disabled={!whatsappHref(avaliacaoModal.whatsapp)}
+              <Button type="button" variant="secondary" className="shrink-0" onClick={() => setAvaliacaoModal(null)}>
+                Fechar
+              </Button>
+              <Button
+                asChild
+                type="button"
+                className="shrink-0"
+                disabled={!whatsappHref(avaliacaoModal.whatsapp)}
+              >
+                <a
+                  href={whatsappHref(avaliacaoModal.whatsapp) ?? "#"}
+                  target="_blank"
+                  rel="noreferrer"
                 >
-                  <a
-                    href={whatsappHref(avaliacaoModal.whatsapp) ?? "#"}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Chamar no WhatsApp
-                  </a>
-                </Button>
-              </div>
+                  Chamar no WhatsApp
+                </a>
+              </Button>
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessageSquareText, Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { MessageCard, type AdminMessageItem } from "./message-card";
 import { MessageDialog, type AdminMessageForm } from "./message-dialog";
 import { MessageEmptyState } from "./message-empty-state";
@@ -38,7 +39,11 @@ function applyPlaceholders(
     .replaceAll("{telefone}", vars.telefone);
 }
 
-function buildWhatsAppUrl(message: string) {
+function buildWhatsAppUrl(message: string, telefone?: string) {
+  const digits = (telefone ?? "").replace(/\D/g, "");
+  if (digits) {
+    return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+  }
   return `https://wa.me/?text=${encodeURIComponent(message)}`;
 }
 
@@ -62,11 +67,9 @@ export function MessagesTab() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMessage, setEditingMessage] = useState<AdminMessageItem | null>(null);
   const [deletingMessage, setDeletingMessage] = useState<AdminMessageItem | null>(null);
-  const [previewVars, setPreviewVars] = useState({
-    nome: "Carlos",
-    empresa_cliente: "Solar Prime Engenharia",
-    telefone: "(61) 99876-5432",
-  });
+  const [previewTargetType, setPreviewTargetType] = useState<"indicador" | "indicado">("indicador");
+  const [selectedIndicadorId, setSelectedIndicadorId] = useState("");
+  const [selectedIndicadoId, setSelectedIndicadoId] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["admin-messages", search, category, onlyFavorites, sortField, sortOrder],
@@ -88,7 +91,29 @@ export function MessagesTab() {
       }),
   });
 
+  const { data: recipientsData, isLoading: isLoadingRecipients } = useQuery({
+    queryKey: ["admin-message-recipients"],
+    retry: false,
+    refetchOnWindowFocus: false,
+    queryFn: () =>
+      callAdminOps<{
+        indicadores: Array<{
+          id: number;
+          nome: string;
+          whatsapp: string | null;
+          indicados: Array<{
+            id: number;
+            nome: string;
+            whatsapp: string | null;
+          }>;
+        }>;
+      }>({
+        action: "list_message_recipients",
+      }),
+  });
+
   const messages = data?.items ?? [];
+  const indicadores = recipientsData?.indicadores ?? [];
 
   const createMutation = useMutation({
     mutationFn: (payload: AdminMessageForm) =>
@@ -176,6 +201,46 @@ export function MessagesTab() {
 
   const hasFilters = Boolean(search.trim()) || category !== "Todos" || onlyFavorites;
   const total = data?.total ?? messages.length;
+  const indicadorSelecionado = useMemo(
+    () => indicadores.find((item) => String(item.id) === selectedIndicadorId) ?? null,
+    [indicadores, selectedIndicadorId],
+  );
+  const indicadosDoIndicador = indicadorSelecionado?.indicados ?? [];
+  const indicadoSelecionado = useMemo(
+    () => indicadosDoIndicador.find((item) => String(item.id) === selectedIndicadoId) ?? null,
+    [indicadosDoIndicador, selectedIndicadoId],
+  );
+  const previewVars = useMemo(() => {
+    const destinatario = previewTargetType === "indicado" ? indicadoSelecionado : indicadorSelecionado;
+    return {
+      nome: destinatario?.nome ?? "",
+      empresa_cliente: "",
+      telefone: destinatario?.whatsapp ?? "",
+    };
+  }, [previewTargetType, indicadorSelecionado, indicadoSelecionado]);
+
+  useEffect(() => {
+    if (!indicadores.length) {
+      if (selectedIndicadorId) setSelectedIndicadorId("");
+      return;
+    }
+    const hasSelected = indicadores.some((item) => String(item.id) === selectedIndicadorId);
+    if (!hasSelected) {
+      setSelectedIndicadorId(String(indicadores[0].id));
+    }
+  }, [indicadores, selectedIndicadorId]);
+
+  useEffect(() => {
+    if (previewTargetType !== "indicado") return;
+    if (!indicadosDoIndicador.length) {
+      if (selectedIndicadoId) setSelectedIndicadoId("");
+      return;
+    }
+    const hasSelected = indicadosDoIndicador.some((item) => String(item.id) === selectedIndicadoId);
+    if (!hasSelected) {
+      setSelectedIndicadoId(String(indicadosDoIndicador[0].id));
+    }
+  }, [previewTargetType, indicadosDoIndicador, selectedIndicadoId]);
 
   return (
     <section className="space-y-4">
@@ -224,50 +289,101 @@ export function MessagesTab() {
       <section className="rounded-2xl border border-zinc-200 bg-white p-4 md:p-5">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h4 className="text-sm font-semibold text-zinc-900">Variáveis dinâmicas para preview</h4>
+            <h4 className="text-sm font-semibold text-zinc-900">Destinatário do preview</h4>
             <p className="text-xs text-zinc-600 mt-0.5">
-              Escolha os dados para substituir {"{nome}"}, {"{empresa_cliente}"} e {"{telefone}"}.
+              Escolha se a mensagem será para um indicador ou para um indicado vinculado a ele.
             </p>
           </div>
         </div>
         <div className="mt-3 grid gap-3 md:grid-cols-3">
           <div>
-            <Label htmlFor="message-var-nome" className="text-xs text-zinc-600">Nome</Label>
-            <Input
-              id="message-var-nome"
-              className="mt-1.5 h-9"
-              value={previewVars.nome}
-              onChange={(event) =>
-                setPreviewVars((prev) => ({ ...prev, nome: event.target.value }))
-              }
-              placeholder="Ex.: Carlos"
-            />
+            <Label htmlFor="message-target-type" className="text-xs text-zinc-600">Tipo de destinatário</Label>
+            <Select value={previewTargetType} onValueChange={(value: "indicador" | "indicado") => setPreviewTargetType(value)}>
+              <SelectTrigger id="message-target-type" className="mt-1.5 h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="indicador">Indicador</SelectItem>
+                <SelectItem value="indicado">Indicado</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div>
-            <Label htmlFor="message-var-empresa" className="text-xs text-zinc-600">Empresa do cliente</Label>
-            <Input
-              id="message-var-empresa"
-              className="mt-1.5 h-9"
-              value={previewVars.empresa_cliente}
-              onChange={(event) =>
-                setPreviewVars((prev) => ({ ...prev, empresa_cliente: event.target.value }))
-              }
-              placeholder="Ex.: Solar Prime"
-            />
+            <Label htmlFor="message-target-indicador" className="text-xs text-zinc-600">Indicador</Label>
+            <Select
+              value={selectedIndicadorId || undefined}
+              onValueChange={(value) => {
+                setSelectedIndicadorId(value);
+                setSelectedIndicadoId("");
+              }}
+              disabled={isLoadingRecipients || indicadores.length === 0}
+            >
+              <SelectTrigger id="message-target-indicador" className="mt-1.5 h-9">
+                <SelectValue placeholder={isLoadingRecipients ? "Carregando..." : "Selecione um indicador"} />
+              </SelectTrigger>
+              <SelectContent>
+                {indicadores.map((indicador) => (
+                  <SelectItem key={indicador.id} value={String(indicador.id)}>
+                    {indicador.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <div>
-            <Label htmlFor="message-var-telefone" className="text-xs text-zinc-600">Telefone</Label>
-            <Input
-              id="message-var-telefone"
-              className="mt-1.5 h-9"
-              value={previewVars.telefone}
-              onChange={(event) =>
-                setPreviewVars((prev) => ({ ...prev, telefone: event.target.value }))
-              }
-              placeholder="Ex.: (61) 99876-5432"
-            />
-          </div>
+          {previewTargetType === "indicado" ? (
+            <div>
+              <Label htmlFor="message-target-indicado" className="text-xs text-zinc-600">Indicado vinculado</Label>
+              <Select
+                value={selectedIndicadoId || undefined}
+                onValueChange={setSelectedIndicadoId}
+                disabled={!indicadorSelecionado || indicadosDoIndicador.length === 0}
+              >
+                <SelectTrigger id="message-target-indicado" className="mt-1.5 h-9">
+                  <SelectValue
+                    placeholder={
+                      !indicadorSelecionado
+                        ? "Selecione um indicador"
+                        : indicadosDoIndicador.length === 0
+                          ? "Sem indicados vinculados"
+                          : "Selecione um indicado"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {indicadosDoIndicador.map((indicado) => (
+                    <SelectItem key={indicado.id} value={String(indicado.id)}>
+                      {indicado.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5">
+              <p className="text-xs font-medium text-zinc-700">Dados usados no preview</p>
+              <p className="mt-1 text-sm text-zinc-800">
+                <span className="font-medium">Nome:</span> {previewVars.nome || "Selecione um indicador"}
+              </p>
+              <p className="mt-0.5 text-sm text-zinc-800">
+                <span className="font-medium">WhatsApp:</span> {previewVars.telefone || "Não informado"}
+              </p>
+            </div>
+          )}
         </div>
+        {previewTargetType === "indicado" && (
+          <div className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5">
+            <p className="text-xs font-medium text-zinc-700">Dados usados no preview</p>
+            <p className="mt-1 text-sm text-zinc-800">
+              <span className="font-medium">Nome:</span> {previewVars.nome || "Selecione um indicado"}
+            </p>
+            <p className="mt-0.5 text-sm text-zinc-800">
+              <span className="font-medium">WhatsApp:</span> {previewVars.telefone || "Não informado"}
+            </p>
+          </div>
+        )}
+        {!isLoadingRecipients && indicadores.length === 0 && (
+          <p className="mt-3 text-xs text-zinc-500">Nenhum indicador encontrado para montar o preview.</p>
+        )}
       </section>
 
       <div className="grid gap-4 md:grid-cols-2">
@@ -310,7 +426,7 @@ export function MessagesTab() {
               onOpenWhatsApp={() => {
                 incrementUsageMutation.mutate(message.id);
                 window.open(
-                  buildWhatsAppUrl(applyPlaceholders(message.content, previewVars)),
+                  buildWhatsAppUrl(applyPlaceholders(message.content, previewVars), previewVars.telefone),
                   "_blank",
                   "noopener,noreferrer",
                 );
