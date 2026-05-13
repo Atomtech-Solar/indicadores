@@ -537,7 +537,7 @@ function AdminRouteComponent() {
     [overview?.propostasNaoPagasLista],
   );
 
-  // Action `reports` mantida no admin-ops como fallback legado;
+  // Action `reports` (admin-insights) — resumo legado no painel;
   // a aba ativa agora consome `admin-analytics` via AnalyticsTab.
   const { data: projectCommentsResp, isLoading: loadingProjectComments } = useQuery({
     queryKey: ["admin-project-comments", projectCommentsModal?.id],
@@ -644,7 +644,7 @@ function AdminRouteComponent() {
       setAdminFeedbackModal({
         variant: "error",
         title: "Não foi possível excluir",
-        message: err.message || "Tente novamente em instantes. Se o erro continuar, confira o deploy da função admin-ops e a migration de permissão DELETE em indicacoes.",
+        message: err.message || "Tente novamente em instantes. Se o erro continuar, confira o deploy das funções admin-* e a migration de permissão DELETE em indicacoes.",
       });
     },
   });

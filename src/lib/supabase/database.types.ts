@@ -307,6 +307,10 @@ export type Database = {
           total_indicadores: number;
         }[];
       };
+      get_admin_reports: {
+        Args: Record<PropertyKey, never>;
+        Returns: Json;
+      };
       get_my_usuario_id: { Args: Record<PropertyKey, never>; Returns: number };
     };
     Enums: {

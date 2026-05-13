@@ -1,4 +1,8 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildCorsHeaders } from "../_shared/cors.ts";
+import { getSupabaseEdgeEnv } from "../_shared/env.ts";
+import { ensureAdmin, getRequesterUserId, getUserByAuthId } from "../_shared/auth-admin.ts";
+import { jsonResponse } from "../_shared/http.ts";
 
 type SetCommissionPayload = {
   indicacaoId: number;
@@ -7,62 +11,6 @@ type SetCommissionPayload = {
   /** Valor do projeto / faturamento da empresa (indicacoes.valor_projeto) */
   valorProjeto: number;
 };
-
-function buildCorsHeaders(req: Request): Record<string, string> {
-  const origin = req.headers.get("origin") ?? "*";
-  const reqHeaders = req.headers.get("access-control-request-headers");
-  return {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Headers": reqHeaders ?? "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    Vary: "Origin, Access-Control-Request-Headers",
-  };
-}
-
-function jsonResponse(req: Request, status: number, body: Record<string, unknown>) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...buildCorsHeaders(req), "Content-Type": "application/json" },
-  });
-}
-
-function getEnv() {
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !anonKey || !serviceRoleKey) throw new Error("MISSING_ENV");
-  return { supabaseUrl, anonKey, serviceRoleKey };
-}
-
-async function getRequesterUserId(anonClient: SupabaseClient, authHeader: string): Promise<string | null> {
-  const token = authHeader.replace("Bearer ", "").trim();
-  if (!token) return null;
-  const { data, error } = await anonClient.auth.getUser(token);
-  if (error || !data.user?.id) return null;
-  return data.user.id;
-}
-
-async function ensureAdmin(adminClient: SupabaseClient, authUserId: string): Promise<void> {
-  const { data, error } = await adminClient
-    .from("usuarios")
-    .select("role")
-    .eq("usuario_id", authUserId)
-    .maybeSingle();
-
-  if (error || data?.role !== "admin") {
-    throw new Error("FORBIDDEN");
-  }
-}
-
-async function getUserByAuthId(adminClient: SupabaseClient, authUserId: string) {
-  const { data, error } = await adminClient
-    .from("usuarios")
-    .select("id, nome")
-    .eq("usuario_id", authUserId)
-    .maybeSingle();
-  if (error || !data?.id) throw new Error("FORBIDDEN");
-  return data;
-}
 
 async function upsertCommissionByIndicacao(
   adminClient: SupabaseClient,
@@ -173,7 +121,7 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return jsonResponse(req, 405, { error: "method_not_allowed" });
 
   try {
-    const { supabaseUrl, anonKey, serviceRoleKey } = getEnv();
+    const { supabaseUrl, anonKey, serviceRoleKey } = getSupabaseEdgeEnv();
     const authHeader = req.headers.get("Authorization") ?? "";
 
     const anonClient = createClient(supabaseUrl, anonKey);

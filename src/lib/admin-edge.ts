@@ -12,10 +12,10 @@ async function messageFromFunctionsInvokeError(error: { message?: string; contex
       /* ignore */
     }
   }
-  return error.message?.trim() || "Erro ao chamar admin-ops.";
+  return error.message?.trim() || "Erro ao chamar função administrativa.";
 }
 
-type AdminAction =
+export type AdminAction =
   | { action: "overview" }
   | { action: "list_users"; page?: number; limit?: number; search?: string }
   | { action: "set_user_role"; userId: string; role: "indicador" | "admin" }
@@ -49,8 +49,44 @@ type AdminAction =
   | { action: "reports" }
   | { action: "analytics_overview"; period: "7d" | "30d" | "90d" | "12m" | "all" };
 
+function adminEdgeFunctionName(payload: AdminAction): string {
+  switch (payload.action) {
+    case "overview":
+    case "analytics_overview":
+    case "reports":
+      return "admin-insights";
+    case "list_users":
+    case "set_user_role":
+    case "disable_user":
+    case "reactivate_user":
+      return "admin-users";
+    case "list_indicacoes":
+    case "list_fotos":
+    case "update_indicacao_status":
+    case "delete_indicacao":
+    case "list_project_comments":
+    case "add_project_comment":
+    case "delete_project_comment":
+      return "admin-leads";
+    case "list_comissoes":
+    case "update_comissao_status":
+      return "admin-finance";
+    case "list_message_recipients":
+    case "list_messages":
+    case "create_message":
+    case "update_message":
+    case "delete_message":
+    case "toggle_favorite":
+    case "increment_usage":
+      return "admin-messages";
+  }
+  const _exhaustive: never = payload;
+  return _exhaustive;
+}
+
 export async function callAdminOps<T>(payload: AdminAction): Promise<T> {
-  const { data, error } = await supabase.functions.invoke("admin-ops", { body: payload });
+  const fn = adminEdgeFunctionName(payload);
+  const { data, error } = await supabase.functions.invoke(fn, { body: payload });
   if (data && typeof data === "object" && "error" in data && data.error) {
     throw new Error(typeof data.error === "string" ? data.error : "Não foi possível concluir a operação administrativa.");
   }
@@ -61,8 +97,23 @@ export async function callAdminOps<T>(payload: AdminAction): Promise<T> {
   return data.data as T;
 }
 
-export async function callAdminOpsMutation(payload: Exclude<AdminAction, { action: "overview" | "list_users" | "list_indicacoes" | "list_comissoes" | "list_fotos" | "list_message_recipients" | "list_messages" | "list_project_comments" | "reports" | "analytics_overview" }>): Promise<void> {
-  const { data, error } = await supabase.functions.invoke("admin-ops", { body: payload });
+export async function callAdminOpsMutation(
+  payload: Exclude<
+    AdminAction,
+    | { action: "overview" }
+    | { action: "list_users" }
+    | { action: "list_indicacoes" }
+    | { action: "list_comissoes" }
+    | { action: "list_fotos" }
+    | { action: "list_message_recipients" }
+    | { action: "list_messages" }
+    | { action: "list_project_comments" }
+    | { action: "reports" }
+    | { action: "analytics_overview" }
+  >,
+): Promise<void> {
+  const fn = adminEdgeFunctionName(payload);
+  const { data, error } = await supabase.functions.invoke(fn, { body: payload });
 
   if (data && typeof data === "object" && "error" in data && data.error) {
     throw new Error(typeof data.error === "string" ? data.error : "Não foi possível concluir a operação administrativa.");
