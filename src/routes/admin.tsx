@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   LayoutDashboard,
@@ -23,11 +23,13 @@ import {
   CheckCircle2,
   Download,
   MessageSquareText,
+  ImagePlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { RequireAdmin } from "@/components/auth/RequireAdmin";
 import { supabase } from "@/lib/supabase/client";
 import { formatBRL, formatDate } from "@/lib/format";
+import { makeUploadId } from "@/lib/upload-id";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -45,6 +47,7 @@ import { SITE_LOGO_URL } from "@/lib/site-logo";
 import { MessagesTab } from "@/components/admin/messages/messages-tab";
 import { AnalyticsTab } from "@/components/admin/analytics/analytics-tab";
 import { AdminMetricCard } from "@/components/admin/admin-metric-card";
+import { AdminNovaIndicacaoModal } from "@/components/admin/admin-nova-indicacao-modal";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -73,6 +76,67 @@ type CommissionModalState = {
   comissaoId: number | null;
   comissaoStatus: ProjetoComissaoStatus | null;
 };
+
+const COMMENT_FOTO_BUCKET = "indicacao-comentarios-admin";
+const MAX_COMMENT_FOTO_BYTES = 5 * 1024 * 1024;
+
+type CommentDraftFoto = { file: File; preview: string };
+
+function validateCommentFotoFile(file: File): string | null {
+  if (!file.type.startsWith("image/")) return "Use apenas arquivos de imagem.";
+  if (file.size > MAX_COMMENT_FOTO_BYTES) return "Cada foto pode ter no máximo 5 MB.";
+  return null;
+}
+
+async function uploadAdminCommentFoto(indicacaoId: number, file: File): Promise<string> {
+  const err = validateCommentFotoFile(file);
+  if (err) throw new Error(err);
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "jpg";
+  const safeExt = ["jpg", "jpeg", "png", "webp"].includes(extension) ? extension : "jpg";
+  const filePath = `${indicacaoId}/${makeUploadId()}.${safeExt}`;
+  const { error: uploadError } = await supabase.storage.from(COMMENT_FOTO_BUCKET).upload(filePath, file, {
+    upsert: false,
+    contentType: file.type,
+  });
+  if (uploadError) throw new Error(`Falha no envio da foto: ${uploadError.message}`);
+  return filePath;
+}
+
+function CommentFotoAttachments({ paths }: { paths: string[] }) {
+  const [urls, setUrls] = useState<string[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const list = paths?.filter(Boolean) ?? [];
+    if (list.length === 0) {
+      setUrls([]);
+      return;
+    }
+    void (async () => {
+      const next = await Promise.all(
+        list.map(async (p) => {
+          const { data, error } = await supabase.storage.from(COMMENT_FOTO_BUCKET).createSignedUrl(p, 60 * 60);
+          if (error || !data?.signedUrl) return "";
+          return data.signedUrl;
+        }),
+      );
+      if (alive) setUrls(next.filter(Boolean));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [paths.join("|")]);
+
+  if (urls.length === 0) return null;
+  return (
+    <div className="mt-2 grid grid-cols-2 gap-2">
+      {urls.map((u) => (
+        <a key={u} href={u} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
+          <img src={u} alt="Anexo do comentário" className="h-28 w-full object-cover hover:opacity-95" />
+        </a>
+      ))}
+    </div>
+  );
+}
 
 function AdminRouteComponent() {
   const queryClient = useQueryClient();
@@ -128,6 +192,9 @@ function AdminRouteComponent() {
   const [deleteIndicacaoPrompt, setDeleteIndicacaoPrompt] = useState<{ id: number; nome_indicado: string } | null>(null);
   const [projectCommentsModal, setProjectCommentsModal] = useState<{ id: number; nome_indicado: string } | null>(null);
   const [projectCommentText, setProjectCommentText] = useState("");
+  const [projectCommentFotos, setProjectCommentFotos] = useState<CommentDraftFoto[]>([]);
+  const projectCommentFotoInputRef = useRef<HTMLInputElement>(null);
+  const [adminNovaIndicacaoOpen, setAdminNovaIndicacaoOpen] = useState(false);
   const [adminFeedbackModal, setAdminFeedbackModal] = useState<{
     variant: "success" | "error";
     title: string;
@@ -487,6 +554,7 @@ function AdminRouteComponent() {
           usuario_nome: string;
           can_delete: boolean;
           created_at: string;
+          anexo_fotos_urls?: string[];
         }[];
       }>({ action: "list_project_comments", indicacaoId: projectCommentsModal!.id }),
   });
@@ -580,16 +648,35 @@ function AdminRouteComponent() {
       });
     },
   });
+  const clearProjectCommentFotosDraft = () => {
+    setProjectCommentFotos((prev) => {
+      prev.forEach((p) => URL.revokeObjectURL(p.preview));
+      return [];
+    });
+  };
+
   const addProjectCommentMutation = useMutation({
     mutationFn: async () => {
       if (!projectCommentsModal) throw new Error("Selecione um projeto.");
       const comment = projectCommentText.trim();
       if (!comment) throw new Error("Digite um comentário antes de enviar.");
-      await callAdminOpsMutation({
-        action: "add_project_comment",
-        indicacaoId: projectCommentsModal.id,
-        comment,
-      });
+      const uploaded: string[] = [];
+      try {
+        for (const item of projectCommentFotos) {
+          uploaded.push(await uploadAdminCommentFoto(projectCommentsModal.id, item.file));
+        }
+        await callAdminOpsMutation({
+          action: "add_project_comment",
+          indicacaoId: projectCommentsModal.id,
+          comment,
+          ...(uploaded.length ? { anexoFotosPaths: uploaded } : {}),
+        });
+      } catch (e) {
+        if (uploaded.length > 0) {
+          await supabase.storage.from(COMMENT_FOTO_BUCKET).remove(uploaded).catch(() => undefined);
+        }
+        throw e;
+      }
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({
@@ -597,6 +684,7 @@ function AdminRouteComponent() {
       });
       await queryClient.invalidateQueries({ queryKey: ["admin-fotos"] });
       setProjectCommentText("");
+      clearProjectCommentFotosDraft();
       toast.success("Comentário adicionado.");
     },
     onError: (error: Error) => {
@@ -1704,11 +1792,24 @@ function AdminRouteComponent() {
             {activeTab === "fotos" && (
               <section className="space-y-4">
                 <div className="rounded-2xl border border-zinc-200 bg-white px-5 py-4">
-                  <h3 className="text-lg font-semibold text-zinc-900">Projetos</h3>
-                  <p className="text-sm text-zinc-600 mt-1">
-                    Indicações enviadas, com ou sem anexos. Excluir remove o registro no Supabase
-                    (comissões vinculadas são removidas) e some de Projetos e da dashboard do indicador.
-                  </p>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-lg font-semibold text-zinc-900">Projetos</h3>
+                      <p className="text-sm text-zinc-600 mt-1">
+                        Indicações enviadas, com ou sem anexos. Excluir remove o registro no Supabase
+                        (comissões vinculadas são removidas) e some de Projetos e da dashboard do indicador.
+                      </p>
+                    </div>
+                    <div className="shrink-0 sm:self-start">
+                      <Button
+                        type="button"
+                        className="h-9 w-full text-xs font-semibold sm:w-auto sm:px-4"
+                        onClick={() => setAdminNovaIndicacaoOpen(true)}
+                      >
+                        Nova indicação para indicador
+                      </Button>
+                    </div>
+                  </div>
                   <div className="mt-3 flex flex-wrap gap-2 text-xs">
                     <span className="inline-flex items-center rounded-full border border-sky-300 bg-sky-50 px-2.5 py-1 font-medium text-sky-700">
                       Azul: chegou agora (recebido)
@@ -2320,10 +2421,11 @@ function AdminRouteComponent() {
           if (!open) {
             setProjectCommentsModal(null);
             setProjectCommentText("");
+            clearProjectCommentFotosDraft();
           }
         }}
       >
-        <DialogContent className="sm:max-w-xl rounded-2xl border-zinc-200">
+        <DialogContent className="sm:max-w-2xl rounded-2xl border-zinc-200">
           <DialogHeader>
             <DialogTitle className="text-zinc-900 text-left">Comentários do projeto</DialogTitle>
             <DialogDescription className="text-left text-zinc-600 pt-1">
@@ -2358,6 +2460,7 @@ function AdminRouteComponent() {
                       )}
                     </div>
                     <p className="text-sm text-zinc-800 mt-1 whitespace-pre-wrap">{comment.comentario}</p>
+                    <CommentFotoAttachments paths={comment.anexo_fotos_urls ?? []} />
                   </div>
                 ))}
             </div>
@@ -2372,6 +2475,69 @@ function AdminRouteComponent() {
                 maxLength={1200}
               />
               <p className="text-xs text-zinc-500 text-right">{projectCommentText.length}/1200</p>
+              <input
+                ref={projectCommentFotoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                multiple
+                className="hidden"
+                onChange={(event) => {
+                  const list = event.target.files;
+                  if (!list?.length) return;
+                  setProjectCommentFotos((prev) => {
+                    const next = [...prev];
+                    for (const file of Array.from(list)) {
+                      if (next.length >= 4) {
+                        toast.info("Limite de 4 fotos", { description: "Remova uma foto para adicionar outra." });
+                        break;
+                      }
+                      const err = validateCommentFotoFile(file);
+                      if (err) {
+                        toast.error(err);
+                        continue;
+                      }
+                      next.push({ file, preview: URL.createObjectURL(file) });
+                    }
+                    return next;
+                  });
+                  event.target.value = "";
+                }}
+              />
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={projectCommentFotos.length >= 4 || addProjectCommentMutation.isPending}
+                  onClick={() => projectCommentFotoInputRef.current?.click()}
+                >
+                  <ImagePlus className="h-3.5 w-3.5 mr-1.5" />
+                  Anexar fotos ({projectCommentFotos.length}/4)
+                </Button>
+                <span className="text-xs text-zinc-500">JPG, PNG ou WebP · máx. 5 MB cada</span>
+              </div>
+              {projectCommentFotos.length > 0 && (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                  {projectCommentFotos.map((item, idx) => (
+                    <div key={item.preview} className="relative overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
+                      <img src={item.preview} alt="" className="h-20 w-full object-cover" />
+                      <button
+                        type="button"
+                        className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80 disabled:opacity-50"
+                        disabled={addProjectCommentMutation.isPending}
+                        onClick={() => {
+                          URL.revokeObjectURL(item.preview);
+                          setProjectCommentFotos((prev) => prev.filter((_, i) => i !== idx));
+                        }}
+                        aria-label="Remover foto"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           <DialogFooter className="gap-2">
@@ -2381,6 +2547,7 @@ function AdminRouteComponent() {
               onClick={() => {
                 setProjectCommentsModal(null);
                 setProjectCommentText("");
+                clearProjectCommentFotosDraft();
               }}
               disabled={addProjectCommentMutation.isPending}
             >
@@ -2484,6 +2651,8 @@ function AdminRouteComponent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AdminNovaIndicacaoModal open={adminNovaIndicacaoOpen} onOpenChange={setAdminNovaIndicacaoOpen} />
     </RequireAdmin>
   );
 }

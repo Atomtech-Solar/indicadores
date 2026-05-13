@@ -38,7 +38,7 @@ type ActionPayload =
   | { action: "toggle_favorite"; messageId: number; isFavorite: boolean }
   | { action: "increment_usage"; messageId: number }
   | { action: "list_project_comments"; indicacaoId: number }
-  | { action: "add_project_comment"; indicacaoId: number; comment: string }
+  | { action: "add_project_comment"; indicacaoId: number; comment: string; anexoFotosPaths?: string[] }
   | { action: "delete_project_comment"; commentId: number }
   | { action: "delete_indicacao"; indicacaoId: number }
   | { action: "update_comissao_status"; comissaoId: number; status: "pendente" | "disponivel" | "pago" | "cancelado" }
@@ -61,7 +61,7 @@ type NotificationInsert = {
 
 function normalizeListParams(input: ListParams) {
   const page = Number.isFinite(input.page) ? Math.max(1, Number(input.page)) : 1;
-  const limit = Number.isFinite(input.limit) ? Math.min(100, Math.max(1, Number(input.limit))) : 10;
+  const limit = Number.isFinite(input.limit) ? Math.min(500, Math.max(1, Number(input.limit))) : 10;
   const search = (input.search ?? "").trim();
   const from = (page - 1) * limit;
   const to = from + limit - 1;
@@ -480,6 +480,14 @@ async function deleteIndicacao(adminClient: SupabaseClient, indicacaoId: number)
     row.foto_extra_2_url,
   ].filter((p): p is string => Boolean(p?.trim()));
 
+  const { data: commentRows } = await adminClient
+    .from("indicacao_comentarios_admin")
+    .select("anexo_fotos_urls")
+    .eq("indicacao_id", indicacaoId);
+  const commentFotoPaths = (commentRows ?? []).flatMap((r) =>
+    Array.isArray(r.anexo_fotos_urls) ? (r.anexo_fotos_urls as string[]).filter((p) => typeof p === "string" && p.trim()) : [],
+  );
+
   const { error: rpcError } = await adminClient.rpc("admin_delete_indicacao", { target_id: indicacaoId });
   if (rpcError) {
     const rpcMsg = errorMessageFromUnknown(rpcError);
@@ -497,6 +505,20 @@ async function deleteIndicacao(adminClient: SupabaseClient, indicacaoId: number)
           type: "admin_delete_indicacao_storage_cleanup_failed",
           indicacaoId,
           message: storageError.message,
+          createdAt: new Date().toISOString(),
+        }),
+      );
+    }
+  }
+
+  if (commentFotoPaths.length > 0) {
+    const { error: commentStorageError } = await adminClient.storage.from("indicacao-comentarios-admin").remove(commentFotoPaths);
+    if (commentStorageError) {
+      console.error(
+        JSON.stringify({
+          type: "admin_delete_indicacao_comment_photos_cleanup_failed",
+          indicacaoId,
+          message: commentStorageError.message,
           createdAt: new Date().toISOString(),
         }),
       );
@@ -562,10 +584,22 @@ async function listComissoes(adminClient: SupabaseClient, params: ListParams) {
   return { items, total: count ?? 0, page, limit };
 }
 
+function normalizeAnexoFotosPaths(raw: unknown): string[] {
+  if (raw == null) return [];
+  if (!Array.isArray(raw)) throw new Error("Formato de anexos inválido.");
+  const paths = raw.map((p) => String(p).trim()).filter(Boolean);
+  if (paths.length > 4) throw new Error("No máximo 4 fotos por comentário.");
+  for (const p of paths) {
+    if (p.length > 400) throw new Error("Caminho de anexo inválido.");
+    if (!/^[a-zA-Z0-9/_\-.]+$/.test(p)) throw new Error("Caminho de anexo inválido.");
+  }
+  return paths;
+}
+
 async function listProjectComments(adminClient: SupabaseClient, indicacaoId: number, authUserId: string) {
   const { data: comments, error } = await adminClient
     .from("indicacao_comentarios_admin")
-    .select("id, indicacao_id, comentario, usuario_id, created_at")
+    .select("id, indicacao_id, comentario, usuario_id, created_at, anexo_fotos_urls")
     .eq("indicacao_id", indicacaoId)
     .order("created_at", { ascending: false });
   if (error) throw error;
@@ -589,6 +623,7 @@ async function listProjectComments(adminClient: SupabaseClient, indicacaoId: num
     usuario_nome: userNameByAuthId.get(c.usuario_id) ?? "Admin",
     can_delete: c.usuario_id === authUserId,
     created_at: c.created_at,
+    anexo_fotos_urls: Array.isArray(c.anexo_fotos_urls) ? c.anexo_fotos_urls.filter((u: unknown) => typeof u === "string" && u.trim()) : [],
   }));
 
   return { items };
@@ -654,12 +689,16 @@ async function deleteProjectComment(
 ) {
   const { data: row, error: fetchError } = await adminClient
     .from("indicacao_comentarios_admin")
-    .select("id, usuario_id")
+    .select("id, usuario_id, anexo_fotos_urls")
     .eq("id", input.commentId)
     .maybeSingle();
   if (fetchError) throw fetchError;
   if (!row?.id) throw new Error("NOT_FOUND");
   if (row.usuario_id !== input.authUserId) throw new Error("FORBIDDEN");
+
+  const fotoPaths = Array.isArray(row.anexo_fotos_urls)
+    ? (row.anexo_fotos_urls as string[]).filter((p) => typeof p === "string" && p.trim())
+    : [];
 
   const { error: deleteError } = await adminClient
     .from("indicacao_comentarios_admin")
@@ -667,15 +706,35 @@ async function deleteProjectComment(
     .eq("id", input.commentId)
     .eq("usuario_id", input.authUserId);
   if (deleteError) throw deleteError;
+
+  if (fotoPaths.length > 0) {
+    const { error: storageError } = await adminClient.storage.from("indicacao-comentarios-admin").remove(fotoPaths);
+    if (storageError) {
+      console.error(
+        JSON.stringify({
+          type: "admin_delete_project_comment_storage_cleanup_failed",
+          commentId: input.commentId,
+          message: storageError.message,
+          createdAt: new Date().toISOString(),
+        }),
+      );
+    }
+  }
 }
 
 async function addProjectComment(
   adminClient: SupabaseClient,
-  input: { indicacaoId: number; comment: string; authUserId: string },
+  input: { indicacaoId: number; comment: string; authUserId: string; anexoFotosPaths?: string[] },
 ) {
   const comment = input.comment.trim();
   if (!comment) throw new Error("Comentário vazio.");
   if (comment.length > 1200) throw new Error("Comentário muito longo. Limite de 1200 caracteres.");
+
+  const anexoPaths = normalizeAnexoFotosPaths(input.anexoFotosPaths);
+  const prefix = `${input.indicacaoId}/`;
+  for (const p of anexoPaths) {
+    if (!p.startsWith(prefix)) throw new Error("Anexo não pertence a esta indicação.");
+  }
 
   const { data: project, error: projectError } = await adminClient
     .from("indicacoes")
@@ -689,6 +748,7 @@ async function addProjectComment(
     indicacao_id: input.indicacaoId,
     usuario_id: input.authUserId,
     comentario: comment,
+    anexo_fotos_urls: anexoPaths,
   });
   if (insertError) throw insertError;
 }
@@ -931,10 +991,17 @@ Deno.serve(async (req: Request) => {
         if (!Number.isFinite(indicacaoId) || indicacaoId <= 0) {
           return jsonResponse(req, 400, { error: "ID da indicação inválido." });
         }
+        let anexoFotosPaths: string[] | undefined;
+        try {
+          anexoFotosPaths = normalizeAnexoFotosPaths((payload as { anexoFotosPaths?: unknown }).anexoFotosPaths);
+        } catch (err) {
+          return jsonResponse(req, 400, { error: err instanceof Error ? err.message : "Anexos inválidos." });
+        }
         await addProjectComment(adminClient, {
           indicacaoId,
-          comment: payload.comment,
+          comment: String((payload as { comment?: unknown }).comment ?? ""),
           authUserId,
+          anexoFotosPaths: anexoFotosPaths.length ? anexoFotosPaths : undefined,
         });
         const { data: indicacao } = await adminClient
           .from("indicacoes")

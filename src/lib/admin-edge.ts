@@ -42,7 +42,7 @@ type AdminAction =
   | { action: "toggle_favorite"; messageId: number; isFavorite: boolean }
   | { action: "increment_usage"; messageId: number }
   | { action: "list_project_comments"; indicacaoId: number }
-  | { action: "add_project_comment"; indicacaoId: number; comment: string }
+  | { action: "add_project_comment"; indicacaoId: number; comment: string; anexoFotosPaths?: string[] }
   | { action: "delete_project_comment"; commentId: number }
   | { action: "delete_indicacao"; indicacaoId: number }
   | { action: "update_comissao_status"; comissaoId: number; status: "pendente" | "disponivel" | "pago" | "cancelado" }
