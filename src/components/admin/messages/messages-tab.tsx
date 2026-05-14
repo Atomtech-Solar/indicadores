@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MessageSquareText, Plus } from "lucide-react";
+import { MessageSquareText, Plus, ChevronsUpDown } from "lucide-react";
 import { toast } from "sonner";
 import { callAdminOps, callAdminOpsMutation } from "@/lib/admin-edge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -13,6 +12,16 @@ import { MessageDialog, type AdminMessageForm } from "./message-dialog";
 import { MessageEmptyState } from "./message-empty-state";
 import { MessageFilters, type MessageSortField, type MessageSortOrder } from "./message-filters";
 import { MessageSkeleton } from "./messages-skeleton";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { cn } from "@/lib/utils";
 
 const MESSAGE_CATEGORIES = [
   "Todos",
@@ -70,6 +79,7 @@ export function MessagesTab() {
   const [previewTargetType, setPreviewTargetType] = useState<"indicador" | "indicado">("indicador");
   const [selectedIndicadorId, setSelectedIndicadorId] = useState("");
   const [selectedIndicadoId, setSelectedIndicadoId] = useState("");
+  const [indicadorPickerOpen, setIndicadorPickerOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["admin-messages", search, category, onlyFavorites, sortField, sortOrder],
@@ -309,26 +319,69 @@ export function MessagesTab() {
             </Select>
           </div>
           <div>
-            <Label htmlFor="message-target-indicador" className="text-xs text-zinc-600">Indicador</Label>
-            <Select
-              value={selectedIndicadorId || undefined}
-              onValueChange={(value) => {
-                setSelectedIndicadorId(value);
-                setSelectedIndicadoId("");
-              }}
-              disabled={isLoadingRecipients || indicadores.length === 0}
-            >
-              <SelectTrigger id="message-target-indicador" className="mt-1.5 h-9">
-                <SelectValue placeholder={isLoadingRecipients ? "Carregando..." : "Selecione um indicador"} />
-              </SelectTrigger>
-              <SelectContent>
-                {indicadores.map((indicador) => (
-                  <SelectItem key={indicador.id} value={String(indicador.id)}>
-                    {indicador.nome}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label htmlFor="message-target-indicador" className="text-xs text-zinc-600">
+              Indicador
+            </Label>
+            <Popover open={indicadorPickerOpen} onOpenChange={setIndicadorPickerOpen} modal={false}>
+              <PopoverTrigger asChild>
+                <Button
+                  id="message-target-indicador"
+                  type="button"
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={indicadorPickerOpen}
+                  disabled={isLoadingRecipients || indicadores.length === 0}
+                  className="mt-1.5 h-9 w-full justify-between rounded-md px-3 font-normal shadow-sm"
+                >
+                  <span
+                    className={cn(
+                      "truncate text-left",
+                      !indicadorSelecionado && "text-muted-foreground",
+                    )}
+                  >
+                    {isLoadingRecipients
+                      ? "Carregando..."
+                      : indicadorSelecionado
+                        ? indicadorSelecionado.nome
+                        : "Selecione um indicador"}
+                  </span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="z-[100] w-[min(28rem,calc(100vw-2rem))] p-0">
+                {isLoadingRecipients ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">Carregando indicadores…</div>
+                ) : indicadores.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-muted-foreground">Nenhum indicador disponível.</div>
+                ) : (
+                  <Command>
+                    <CommandInput placeholder="Buscar por nome ou WhatsApp…" className="h-10" />
+                    <CommandList className="max-h-[min(280px,45vh)]">
+                      <CommandEmpty>Nenhum indicador encontrado.</CommandEmpty>
+                      <CommandGroup>
+                        {indicadores.map((indicador) => {
+                          const waDigits = (indicador.whatsapp ?? "").replace(/\D/g, "");
+                          return (
+                            <CommandItem
+                              key={indicador.id}
+                              value={`${indicador.nome} ${indicador.id} ${indicador.whatsapp ?? ""} ${waDigits}`}
+                              keywords={[indicador.nome, waDigits, indicador.whatsapp ?? ""]}
+                              onSelect={() => {
+                                setSelectedIndicadorId(String(indicador.id));
+                                setSelectedIndicadoId("");
+                                setIndicadorPickerOpen(false);
+                              }}
+                            >
+                              {indicador.nome}
+                            </CommandItem>
+                          );
+                        })}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                )}
+              </PopoverContent>
+            </Popover>
           </div>
           {previewTargetType === "indicado" ? (
             <div>
