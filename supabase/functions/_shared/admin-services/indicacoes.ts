@@ -3,6 +3,13 @@ import type { ListParams } from "../list-params.ts";
 import { normalizeListParams } from "../list-params.ts";
 import { errorMessageFromUnknown } from "../errors.ts";
 
+const MAX_INDICADOR_IDS_FOR_FILTER = 500;
+
+async function usuarioIdsByIndicadorNomeIlike(adminClient: SupabaseClient, search: string): Promise<number[]> {
+  const { data } = await adminClient.from("usuarios").select("id").ilike("nome", `%${search}%`).limit(MAX_INDICADOR_IDS_FOR_FILTER);
+  return (data ?? []).map((r) => r.id as number);
+}
+
 export async function listIndicacoes(adminClient: SupabaseClient, params: ListParams & { onlyCommissionEligible?: boolean }) {
   const { page, limit, search, from, to } = normalizeListParams(params);
   let query = adminClient
@@ -14,7 +21,12 @@ export async function listIndicacoes(adminClient: SupabaseClient, params: ListPa
     query = query.in("status", ["negociacao", "fechado"]);
   }
   if (search) {
-    query = query.or(`nome_indicado.ilike.%${search}%,tipo.ilike.%${search}%,status.ilike.%${search}%`);
+    const indicadorIds = await usuarioIdsByIndicadorNomeIlike(adminClient, search);
+    const orParts = [`nome_indicado.ilike.%${search}%`, `tipo.ilike.%${search}%`, `status.ilike.%${search}%`];
+    if (indicadorIds.length > 0) {
+      orParts.push(`usuario_id.in.(${indicadorIds.join(",")})`);
+    }
+    query = query.or(orParts.join(","));
   }
 
   const { data: indicacoes, count } = await query.range(from, to);
@@ -42,7 +54,18 @@ export async function listFotos(adminClient: SupabaseClient, params: ListParams)
     .order("created_at", { ascending: false });
 
   if (search) {
-    query = query.or(`nome_indicado.ilike.%${search}%,whatsapp.ilike.%${search}%,tipo_projeto.ilike.%${search}%,observacoes.ilike.%${search}%,status.ilike.%${search}%`);
+    const indicadorIds = await usuarioIdsByIndicadorNomeIlike(adminClient, search);
+    const orParts = [
+      `nome_indicado.ilike.%${search}%`,
+      `whatsapp.ilike.%${search}%`,
+      `tipo_projeto.ilike.%${search}%`,
+      `observacoes.ilike.%${search}%`,
+      `status.ilike.%${search}%`,
+    ];
+    if (indicadorIds.length > 0) {
+      orParts.push(`usuario_id.in.(${indicadorIds.join(",")})`);
+    }
+    query = query.or(orParts.join(","));
   }
 
   const { data: indicacoes, count } = await query.range(from, to);
@@ -148,11 +171,17 @@ export async function deleteIndicacao(adminClient: SupabaseClient, indicacaoId: 
 
   const { data: commentRows } = await adminClient
     .from("indicacao_comentarios_admin")
-    .select("anexo_fotos_urls")
+    .select("anexo_fotos_urls, anexo_documentos_urls")
     .eq("indicacao_id", indicacaoId);
-  const commentFotoPaths = (commentRows ?? []).flatMap((r) =>
-    Array.isArray(r.anexo_fotos_urls) ? (r.anexo_fotos_urls as string[]).filter((p) => typeof p === "string" && p.trim()) : [],
-  );
+  const commentFotoPaths = (commentRows ?? []).flatMap((r) => {
+    const fotos = Array.isArray(r.anexo_fotos_urls)
+      ? (r.anexo_fotos_urls as string[]).filter((p) => typeof p === "string" && p.trim())
+      : [];
+    const docs = Array.isArray((r as { anexo_documentos_urls?: unknown }).anexo_documentos_urls)
+      ? ((r as { anexo_documentos_urls: string[] }).anexo_documentos_urls).filter((p) => typeof p === "string" && p.trim())
+      : [];
+    return [...fotos, ...docs];
+  });
 
   const { error: rpcError } = await adminClient.rpc("admin_delete_indicacao", { target_id: indicacaoId });
   if (rpcError) {

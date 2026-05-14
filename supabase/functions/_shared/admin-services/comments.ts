@@ -1,10 +1,10 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-export function normalizeAnexoFotosPaths(raw: unknown): string[] {
+function normalizePathArray(raw: unknown, max: number, label: string): string[] {
   if (raw == null) return [];
   if (!Array.isArray(raw)) throw new Error("Formato de anexos inválido.");
   const paths = raw.map((p) => String(p).trim()).filter(Boolean);
-  if (paths.length > 4) throw new Error("No máximo 4 fotos por comentário.");
+  if (paths.length > max) throw new Error(`No máximo ${max} ${label} por comentário.`);
   for (const p of paths) {
     if (p.length > 400) throw new Error("Caminho de anexo inválido.");
     if (!/^[a-zA-Z0-9/_\-.]+$/.test(p)) throw new Error("Caminho de anexo inválido.");
@@ -12,10 +12,18 @@ export function normalizeAnexoFotosPaths(raw: unknown): string[] {
   return paths;
 }
 
+export function normalizeAnexoFotosPaths(raw: unknown): string[] {
+  return normalizePathArray(raw, 4, "fotos");
+}
+
+export function normalizeAnexoDocumentosPaths(raw: unknown): string[] {
+  return normalizePathArray(raw, 2, "documentos");
+}
+
 export async function listProjectComments(adminClient: SupabaseClient, indicacaoId: number, authUserId: string) {
   const { data: comments, error } = await adminClient
     .from("indicacao_comentarios_admin")
-    .select("id, indicacao_id, comentario, usuario_id, created_at, anexo_fotos_urls")
+    .select("id, indicacao_id, comentario, usuario_id, created_at, anexo_fotos_urls, anexo_documentos_urls")
     .eq("indicacao_id", indicacaoId)
     .order("created_at", { ascending: false });
   if (error) throw error;
@@ -40,6 +48,9 @@ export async function listProjectComments(adminClient: SupabaseClient, indicacao
     can_delete: c.usuario_id === authUserId,
     created_at: c.created_at,
     anexo_fotos_urls: Array.isArray(c.anexo_fotos_urls) ? c.anexo_fotos_urls.filter((u: unknown) => typeof u === "string" && u.trim()) : [],
+    anexo_documentos_urls: Array.isArray(c.anexo_documentos_urls)
+      ? c.anexo_documentos_urls.filter((u: unknown) => typeof u === "string" && u.trim())
+      : [],
   }));
 
   return { items };
@@ -51,7 +62,7 @@ export async function deleteProjectComment(
 ) {
   const { data: row, error: fetchError } = await adminClient
     .from("indicacao_comentarios_admin")
-    .select("id, usuario_id, anexo_fotos_urls")
+    .select("id, usuario_id, anexo_fotos_urls, anexo_documentos_urls")
     .eq("id", input.commentId)
     .maybeSingle();
   if (fetchError) throw fetchError;
@@ -61,6 +72,10 @@ export async function deleteProjectComment(
   const fotoPaths = Array.isArray(row.anexo_fotos_urls)
     ? (row.anexo_fotos_urls as string[]).filter((p) => typeof p === "string" && p.trim())
     : [];
+  const docPaths = Array.isArray(row.anexo_documentos_urls)
+    ? (row.anexo_documentos_urls as string[]).filter((p) => typeof p === "string" && p.trim())
+    : [];
+  const allStoragePaths = [...fotoPaths, ...docPaths];
 
   const { error: deleteError } = await adminClient
     .from("indicacao_comentarios_admin")
@@ -69,8 +84,8 @@ export async function deleteProjectComment(
     .eq("usuario_id", input.authUserId);
   if (deleteError) throw deleteError;
 
-  if (fotoPaths.length > 0) {
-    const { error: storageError } = await adminClient.storage.from("indicacao-comentarios-admin").remove(fotoPaths);
+  if (allStoragePaths.length > 0) {
+    const { error: storageError } = await adminClient.storage.from("indicacao-comentarios-admin").remove(allStoragePaths);
     if (storageError) {
       console.error(
         JSON.stringify({
@@ -86,16 +101,26 @@ export async function deleteProjectComment(
 
 export async function addProjectComment(
   adminClient: SupabaseClient,
-  input: { indicacaoId: number; comment: string; authUserId: string; anexoFotosPaths?: string[] },
+  input: {
+    indicacaoId: number;
+    comment: string;
+    authUserId: string;
+    anexoFotosPaths?: string[];
+    anexoDocumentosPaths?: string[];
+  },
 ) {
   const comment = input.comment.trim();
   if (!comment) throw new Error("Comentário vazio.");
   if (comment.length > 1200) throw new Error("Comentário muito longo. Limite de 1200 caracteres.");
 
   const anexoPaths = normalizeAnexoFotosPaths(input.anexoFotosPaths);
+  const docPaths = normalizeAnexoDocumentosPaths(input.anexoDocumentosPaths);
   const prefix = `${input.indicacaoId}/`;
   for (const p of anexoPaths) {
     if (!p.startsWith(prefix)) throw new Error("Anexo não pertence a esta indicação.");
+  }
+  for (const p of docPaths) {
+    if (!p.startsWith(prefix)) throw new Error("Documento não pertence a esta indicação.");
   }
 
   const { data: project, error: projectError } = await adminClient
@@ -111,6 +136,7 @@ export async function addProjectComment(
     usuario_id: input.authUserId,
     comentario: comment,
     anexo_fotos_urls: anexoPaths,
+    anexo_documentos_urls: docPaths,
   });
   if (insertError) throw insertError;
 }

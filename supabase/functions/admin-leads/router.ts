@@ -8,6 +8,7 @@ import {
   addProjectComment,
   deleteProjectComment,
   listProjectComments,
+  normalizeAnexoDocumentosPaths,
   normalizeAnexoFotosPaths,
 } from "../_shared/admin-services/comments.ts";
 
@@ -69,11 +70,18 @@ export async function routeAdminLeads(ctx: AdminRequestContext, payload: unknown
       } catch (err) {
         return jsonResponse(req, 400, { error: err instanceof Error ? err.message : "Anexos inválidos." });
       }
+      let anexoDocumentosPaths: string[] | undefined;
+      try {
+        anexoDocumentosPaths = normalizeAnexoDocumentosPaths((p as { anexoDocumentosPaths?: unknown }).anexoDocumentosPaths);
+      } catch (err) {
+        return jsonResponse(req, 400, { error: err instanceof Error ? err.message : "Documentos inválidos." });
+      }
       await addProjectComment(adminClient, {
         indicacaoId,
         comment: String((p as { comment?: unknown }).comment ?? ""),
         authUserId,
         anexoFotosPaths: anexoFotosPaths.length ? anexoFotosPaths : undefined,
+        anexoDocumentosPaths: anexoDocumentosPaths.length ? anexoDocumentosPaths : undefined,
       });
       const { data: indicacao } = await adminClient
         .from("indicacoes")

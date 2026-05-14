@@ -812,7 +812,7 @@ function Dashboard() {
                   onClick={() => setShowNotificationsMenu(false)}
                   className="fixed inset-0 z-10 cursor-default"
                 />
-                <div className="absolute right-[88px] top-16 z-20 w-[360px] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-card shadow-card p-2">
+                <div className="z-30 w-[360px] max-w-[min(360px,calc(100vw-2rem))] rounded-xl border border-border bg-card shadow-card p-2 min-[1001px]:absolute min-[1001px]:right-[88px] min-[1001px]:top-16 max-[1000px]:fixed max-[1000px]:left-1/2 max-[1000px]:-translate-x-1/2 max-[1000px]:top-20">
                   <div className="flex items-center justify-between px-2 py-1.5">
                     <p className="text-sm font-semibold text-zinc-900">Notificações</p>
                     <Button

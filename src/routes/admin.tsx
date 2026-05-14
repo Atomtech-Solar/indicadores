@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   LayoutDashboard,
   Users,
@@ -24,6 +24,7 @@ import {
   Download,
   MessageSquareText,
   ImagePlus,
+  FileText,
 } from "lucide-react";
 import { toast } from "sonner";
 import { RequireAdmin } from "@/components/auth/RequireAdmin";
@@ -79,6 +80,19 @@ type CommissionModalState = {
 
 const COMMENT_FOTO_BUCKET = "indicacao-comentarios-admin";
 const MAX_COMMENT_FOTO_BYTES = 5 * 1024 * 1024;
+const MAX_COMMENT_DOC_BYTES = 10 * 1024 * 1024;
+
+const ALLOWED_COMMENT_DOC_EXTENSIONS = new Set(["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv"]);
+const COMMENT_DOC_MIME_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/csv",
+]);
 
 type CommentDraftFoto = { file: File; preview: string };
 
@@ -99,6 +113,32 @@ async function uploadAdminCommentFoto(indicacaoId: number, file: File): Promise<
     contentType: file.type,
   });
   if (uploadError) throw new Error(`Falha no envio da foto: ${uploadError.message}`);
+  return filePath;
+}
+
+function validateCommentDocumentFile(file: File): string | null {
+  if (file.size > MAX_COMMENT_DOC_BYTES) return "Cada documento pode ter no máximo 10 MB.";
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (!ALLOWED_COMMENT_DOC_EXTENSIONS.has(extension)) {
+    return "Formato não permitido. Use PDF, Word, Excel, PowerPoint ou CSV.";
+  }
+  if (file.type && file.type !== "application/octet-stream" && !COMMENT_DOC_MIME_TYPES.has(file.type)) {
+    return "Tipo de arquivo não permitido.";
+  }
+  return null;
+}
+
+async function uploadAdminCommentDocument(indicacaoId: number, file: File): Promise<string> {
+  const err = validateCommentDocumentFile(file);
+  if (err) throw new Error(err);
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "pdf";
+  const safeExt = ALLOWED_COMMENT_DOC_EXTENSIONS.has(extension) ? extension : "pdf";
+  const filePath = `${indicacaoId}/${makeUploadId()}.${safeExt}`;
+  const { error: uploadError } = await supabase.storage.from(COMMENT_FOTO_BUCKET).upload(filePath, file, {
+    upsert: false,
+    contentType: file.type || "application/octet-stream",
+  });
+  if (uploadError) throw new Error(`Falha no envio do documento: ${uploadError.message}`);
   return filePath;
 }
 
@@ -132,6 +172,50 @@ function CommentFotoAttachments({ paths }: { paths: string[] }) {
       {urls.map((u) => (
         <a key={u} href={u} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-md border border-zinc-200 bg-zinc-100">
           <img src={u} alt="Anexo do comentário" className="h-28 w-full object-cover hover:opacity-95" />
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function CommentDocumentAttachments({ paths }: { paths: string[] }) {
+  const [items, setItems] = useState<{ path: string; url: string; label: string }[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const list = paths?.filter(Boolean) ?? [];
+    if (list.length === 0) {
+      setItems([]);
+      return;
+    }
+    void (async () => {
+      const next = await Promise.all(
+        list.map(async (p) => {
+          const { data, error } = await supabase.storage.from(COMMENT_FOTO_BUCKET).createSignedUrl(p, 60 * 60);
+          if (error || !data?.signedUrl) return null;
+          const label = p.split("/").pop() || p;
+          return { path: p, url: data.signedUrl, label };
+        }),
+      );
+      if (alive) setItems(next.filter((x): x is NonNullable<typeof x> => Boolean(x)));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [paths.join("|")]);
+
+  if (items.length === 0) return null;
+  return (
+    <div className="mt-2 flex flex-col gap-1.5">
+      {items.map((item) => (
+        <a
+          key={item.path}
+          href={item.url}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-xs font-medium text-zinc-800 hover:bg-zinc-100"
+        >
+          <Download className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
+          <span className="truncate">{item.label}</span>
         </a>
       ))}
     </div>
@@ -193,7 +277,9 @@ function AdminRouteComponent() {
   const [projectCommentsModal, setProjectCommentsModal] = useState<{ id: number; nome_indicado: string } | null>(null);
   const [projectCommentText, setProjectCommentText] = useState("");
   const [projectCommentFotos, setProjectCommentFotos] = useState<CommentDraftFoto[]>([]);
+  const [projectCommentDocs, setProjectCommentDocs] = useState<File[]>([]);
   const projectCommentFotoInputRef = useRef<HTMLInputElement>(null);
+  const projectCommentDocInputRef = useRef<HTMLInputElement>(null);
   const [adminNovaIndicacaoOpen, setAdminNovaIndicacaoOpen] = useState(false);
   const [adminFeedbackModal, setAdminFeedbackModal] = useState<{
     variant: "success" | "error";
@@ -311,6 +397,7 @@ function AdminRouteComponent() {
     enabled: shouldLoadOverview,
     retry: false,
     refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
     queryFn: () =>
       callAdminOps<{
         metrics: {
@@ -409,6 +496,7 @@ function AdminRouteComponent() {
     enabled: shouldLoadUsuarios,
     retry: false,
     refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
     queryFn: () =>
       callAdminOps<{
         items: {
@@ -432,6 +520,7 @@ function AdminRouteComponent() {
     enabled: shouldLoadFotos,
     retry: false,
     refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
     queryFn: () =>
       callAdminOps<{
         items: {
@@ -465,6 +554,7 @@ function AdminRouteComponent() {
     enabled: shouldLoadComissoes,
     retry: false,
     refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
     queryFn: () =>
       callAdminOps<{
         items: {
@@ -485,6 +575,7 @@ function AdminRouteComponent() {
     enabled: shouldLoadComissoes,
     retry: false,
     refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
     queryFn: () =>
       callAdminOps<{
         items: {
@@ -555,6 +646,7 @@ function AdminRouteComponent() {
           can_delete: boolean;
           created_at: string;
           anexo_fotos_urls?: string[];
+          anexo_documentos_urls?: string[];
         }[];
       }>({ action: "list_project_comments", indicacaoId: projectCommentsModal!.id }),
   });
@@ -654,26 +746,35 @@ function AdminRouteComponent() {
       return [];
     });
   };
+  const clearProjectCommentDocsDraft = () => {
+    setProjectCommentDocs([]);
+  };
 
   const addProjectCommentMutation = useMutation({
     mutationFn: async () => {
       if (!projectCommentsModal) throw new Error("Selecione um projeto.");
       const comment = projectCommentText.trim();
       if (!comment) throw new Error("Digite um comentário antes de enviar.");
-      const uploaded: string[] = [];
+      const uploadedFotos: string[] = [];
+      const uploadedDocs: string[] = [];
       try {
         for (const item of projectCommentFotos) {
-          uploaded.push(await uploadAdminCommentFoto(projectCommentsModal.id, item.file));
+          uploadedFotos.push(await uploadAdminCommentFoto(projectCommentsModal.id, item.file));
+        }
+        for (const file of projectCommentDocs) {
+          uploadedDocs.push(await uploadAdminCommentDocument(projectCommentsModal.id, file));
         }
         await callAdminOpsMutation({
           action: "add_project_comment",
           indicacaoId: projectCommentsModal.id,
           comment,
-          ...(uploaded.length ? { anexoFotosPaths: uploaded } : {}),
+          ...(uploadedFotos.length ? { anexoFotosPaths: uploadedFotos } : {}),
+          ...(uploadedDocs.length ? { anexoDocumentosPaths: uploadedDocs } : {}),
         });
       } catch (e) {
-        if (uploaded.length > 0) {
-          await supabase.storage.from(COMMENT_FOTO_BUCKET).remove(uploaded).catch(() => undefined);
+        const toRemove = [...uploadedFotos, ...uploadedDocs];
+        if (toRemove.length > 0) {
+          await supabase.storage.from(COMMENT_FOTO_BUCKET).remove(toRemove).catch(() => undefined);
         }
         throw e;
       }
@@ -685,6 +786,7 @@ function AdminRouteComponent() {
       await queryClient.invalidateQueries({ queryKey: ["admin-fotos"] });
       setProjectCommentText("");
       clearProjectCommentFotosDraft();
+      clearProjectCommentDocsDraft();
       toast.success("Comentário adicionado.");
     },
     onError: (error: Error) => {
@@ -791,11 +893,18 @@ function AdminRouteComponent() {
         buttonClass: "border-sky-300 text-sky-700 hover:bg-sky-50",
       };
     }
-    if (status === "analise" || status === "negociacao") {
+    if (status === "analise") {
       return {
         cardClass: "border-amber-300 bg-amber-50/70",
         label: status,
         buttonClass: "border-amber-300 text-amber-700 hover:bg-amber-50",
+      };
+    }
+    if (status === "negociacao") {
+      return {
+        cardClass: "border-purple-500 bg-purple-100/90",
+        label: status,
+        buttonClass: "border-purple-500 text-purple-950 hover:bg-purple-200/80",
       };
     }
     if (status === "fechado" || status === "pago") {
@@ -860,24 +969,18 @@ function AdminRouteComponent() {
     return status;
   };
   useEffect(() => {
-    if (usuariosPage > usuariosTotalPages) setUsuariosPage(usuariosTotalPages);
-    if (fotosPage > fotosTotalPages) setFotosPage(fotosTotalPages);
-    if (comissoesDefinicaoPage > comissoesDefinicaoTotalPages) setComissoesDefinicaoPage(comissoesDefinicaoTotalPages);
-    if (comissoesHistoricoPage > comissoesHistoricoTotalPages) setComissoesHistoricoPage(comissoesHistoricoTotalPages);
-    if (overviewComissoesPage > overviewComissoesTotalPages) setOverviewComissoesPage(overviewComissoesTotalPages);
-    if (overviewPropostasNpPage > overviewPropostasNpTotalPages) setOverviewPropostasNpPage(overviewPropostasNpTotalPages);
+    setUsuariosPage((p) => Math.min(p, usuariosTotalPages));
+    setFotosPage((p) => Math.min(p, fotosTotalPages));
+    setComissoesDefinicaoPage((p) => Math.min(p, comissoesDefinicaoTotalPages));
+    setComissoesHistoricoPage((p) => Math.min(p, comissoesHistoricoTotalPages));
+    setOverviewComissoesPage((p) => Math.min(p, overviewComissoesTotalPages));
+    setOverviewPropostasNpPage((p) => Math.min(p, overviewPropostasNpTotalPages));
   }, [
-    usuariosPage,
     usuariosTotalPages,
-    fotosPage,
     fotosTotalPages,
-    comissoesDefinicaoPage,
     comissoesDefinicaoTotalPages,
-    comissoesHistoricoPage,
     comissoesHistoricoTotalPages,
-    overviewComissoesPage,
     overviewComissoesTotalPages,
-    overviewPropostasNpPage,
     overviewPropostasNpTotalPages,
   ]);
 
@@ -1003,7 +1106,7 @@ function AdminRouteComponent() {
                       onClick={() => setShowNotificationsMenu(false)}
                       className="fixed inset-0 z-10 cursor-default"
                     />
-                    <div className="absolute right-0 top-12 z-20 w-[380px] max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-card shadow-card p-2">
+                    <div className="z-30 w-[380px] max-w-[min(380px,calc(100vw-2rem))] rounded-xl border border-border bg-card shadow-card p-2 min-[1001px]:absolute min-[1001px]:right-0 min-[1001px]:top-12 max-[1000px]:fixed max-[1000px]:left-1/2 max-[1000px]:-translate-x-1/2 max-[1000px]:top-20">
                       <div className="flex items-center justify-between px-2 py-1.5">
                         <p className="text-sm font-semibold text-zinc-900">Notificações gerais</p>
                         <Button
@@ -1527,7 +1630,7 @@ function AdminRouteComponent() {
                           setComissoesDefinicaoSearch(e.target.value);
                           setComissoesDefinicaoPage(1);
                         }}
-                        placeholder='Buscar por usuário, indicado, tipo, status, valor ou data (ex.: "negociação", "fechado")'
+                        placeholder='Buscar por nome do indicador, indicado, tipo, status ou valor (ex.: "negociação", "fechado")'
                         className="h-10"
                       />
                     </div>
@@ -1815,7 +1918,10 @@ function AdminRouteComponent() {
                       Azul: chegou agora (recebido)
                     </span>
                     <span className="inline-flex items-center rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 font-medium text-amber-700">
-                      Amarelo: em análise / negociação
+                      Amarelo: em análise
+                    </span>
+                    <span className="inline-flex items-center rounded-full border border-purple-500 bg-purple-100 px-2.5 py-1 font-semibold text-purple-950">
+                      Roxo: negociação
                     </span>
                     <span className="inline-flex items-center rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">
                       Verde: finalizado (fechado/pago)
@@ -1831,7 +1937,7 @@ function AdminRouteComponent() {
                         setFotosSearch(e.target.value);
                         setFotosPage(1);
                       }}
-                      placeholder='Buscar por indicador, indicado, solução, observação ou data (ex.: "usina solar")'
+                      placeholder='Buscar por nome do indicador, indicado, solução, observação ou status (ex.: "Maria", "usina solar")'
                       className="h-10"
                     />
                   </div>
@@ -2422,6 +2528,7 @@ function AdminRouteComponent() {
             setProjectCommentsModal(null);
             setProjectCommentText("");
             clearProjectCommentFotosDraft();
+            clearProjectCommentDocsDraft();
           }
         }}
       >
@@ -2461,6 +2568,7 @@ function AdminRouteComponent() {
                     </div>
                     <p className="text-sm text-zinc-800 mt-1 whitespace-pre-wrap">{comment.comentario}</p>
                     <CommentFotoAttachments paths={comment.anexo_fotos_urls ?? []} />
+                    <CommentDocumentAttachments paths={comment.anexo_documentos_urls ?? []} />
                   </div>
                 ))}
             </div>
@@ -2538,6 +2646,65 @@ function AdminRouteComponent() {
                   ))}
                 </div>
               )}
+              <input
+                ref={projectCommentDocInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/csv"
+                multiple
+                className="hidden"
+                onChange={(event) => {
+                  const list = event.target.files;
+                  if (!list?.length) return;
+                  setProjectCommentDocs((prev) => {
+                    const next = [...prev];
+                    for (const file of Array.from(list)) {
+                      if (next.length >= 2) {
+                        toast.info("Limite de 2 documentos", { description: "Remova um arquivo para adicionar outro." });
+                        break;
+                      }
+                      const err = validateCommentDocumentFile(file);
+                      if (err) {
+                        toast.error(err);
+                        continue;
+                      }
+                      next.push(file);
+                    }
+                    return next;
+                  });
+                  event.target.value = "";
+                }}
+              />
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
+                  disabled={projectCommentDocs.length >= 2 || addProjectCommentMutation.isPending}
+                  onClick={() => projectCommentDocInputRef.current?.click()}
+                >
+                  <FileText className="h-3.5 w-3.5 mr-1.5" />
+                  Anexar documentos ({projectCommentDocs.length}/2)
+                </Button>
+                <span className="text-xs text-zinc-500">PDF, Word, Excel, PowerPoint ou CSV · máx. 10 MB cada</span>
+              </div>
+              {projectCommentDocs.length > 0 && (
+                <ul className="space-y-1 pt-1 text-xs text-zinc-700">
+                  {projectCommentDocs.map((file, idx) => (
+                    <li key={`${file.name}-${idx}`} className="flex items-center justify-between gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1.5">
+                      <span className="truncate font-medium">{file.name}</span>
+                      <button
+                        type="button"
+                        className="shrink-0 text-rose-600 hover:text-rose-800 disabled:opacity-50"
+                        disabled={addProjectCommentMutation.isPending}
+                        onClick={() => setProjectCommentDocs((prev) => prev.filter((_, i) => i !== idx))}
+                      >
+                        Remover
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
           <DialogFooter className="gap-2">
@@ -2548,6 +2715,7 @@ function AdminRouteComponent() {
                 setProjectCommentsModal(null);
                 setProjectCommentText("");
                 clearProjectCommentFotosDraft();
+                clearProjectCommentDocsDraft();
               }}
               disabled={addProjectCommentMutation.isPending}
             >

@@ -26,6 +26,13 @@ async function upsertCommissionByIndicacao(
     .maybeSingle();
 
   if (indicacaoError || !indicacao) throw new Error("INDICACAO_NOT_FOUND");
+
+  const { data: indicadorRow } = await adminClient
+    .from("usuarios")
+    .select("nome")
+    .eq("id", indicacao.usuario_id)
+    .maybeSingle();
+  const indicadorNome = indicadorRow?.nome?.trim() || "Indicador";
   if (indicacao.status !== "negociacao" && indicacao.status !== "fechado") {
     throw new Error("INVALID_STATUS_FOR_COMMISSION");
   }
@@ -83,12 +90,15 @@ async function upsertCommissionByIndicacao(
 
   if (activityError) throw new Error("ACTIVITY_LOG_FAILED");
 
+  const propostaTitulo = "Nova proposta";
+  const propostaMensagem = `${actor.nome ?? "Admin"} anexou uma nova proposta em ${indicadorNome}.`;
+
   const { data: admins } = await adminClient.from("usuarios").select("id").eq("role", "admin");
   const adminNotifs = (admins ?? []).map((a) => ({
     destinatario_usuario_id: a.id,
-    evento: "comissao_definida",
-    titulo: "Comissão definida",
-    mensagem: `${actor.nome ?? "Admin"} definiu comissão para ${indicacao.nome_indicado ?? `indicação #${indicacao.id}`}.`,
+    evento: "proposta_anexada",
+    titulo: propostaTitulo,
+    mensagem: propostaMensagem,
     entidade_tipo: "indicacoes",
     entidade_id: indicacao.id,
     ator_usuario_id: actor.id,
@@ -96,13 +106,15 @@ async function upsertCommissionByIndicacao(
     metadata: {
       valor_comissao: valorComissao,
       valor_projeto: valorProjeto,
+      nome_indicado: indicacao.nome_indicado,
+      indicador_nome: indicadorNome,
     },
   }));
   adminNotifs.push({
     destinatario_usuario_id: indicacao.usuario_id,
-    evento: "comissao_definida_indicador",
-    titulo: "Comissão atualizada",
-    mensagem: `Sua comissão da indicação "${indicacao.nome_indicado ?? indicacao.id}" foi definida em ${valorComissao.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}.`,
+    evento: "proposta_anexada_indicador",
+    titulo: propostaTitulo,
+    mensagem: propostaMensagem,
     entidade_tipo: "indicacoes",
     entidade_id: indicacao.id,
     ator_usuario_id: actor.id,
@@ -110,6 +122,8 @@ async function upsertCommissionByIndicacao(
     metadata: {
       valor_comissao: valorComissao,
       valor_projeto: valorProjeto,
+      nome_indicado: indicacao.nome_indicado,
+      indicador_nome: indicadorNome,
     },
   });
   const { error: notifError } = await adminClient.from("notificacoes").insert(adminNotifs);
