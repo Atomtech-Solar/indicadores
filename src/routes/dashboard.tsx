@@ -1951,7 +1951,19 @@ function NovaIndicacaoModal({
       if (error) throw error;
       return data.id;
     },
-    onSuccess: (id) => {
+    onSuccess: async (id) => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.access_token && id != null) {
+        const { error: pushErr } = await supabase.functions.invoke("send-push", {
+          body: { indicacaoId: id },
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (pushErr) {
+          console.warn("[push] send-push (nova indicação indicador):", pushErr.message);
+        }
+      }
       void queryClient.invalidateQueries({ queryKey: ["indicacoes"] });
       void queryClient.invalidateQueries({ queryKey: ["atividades"] });
       toast.success("Indicação enviada.");

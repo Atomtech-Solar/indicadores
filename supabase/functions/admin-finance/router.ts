@@ -1,4 +1,5 @@
 import { createNotifications } from "../_shared/notifications.ts";
+import { notifyAdminsPush } from "../_shared/push-fcm.ts";
 import { jsonResponse } from "../_shared/http.ts";
 import type { AdminRequestContext } from "../_shared/admin-runtime.ts";
 import type { ListParams } from "../_shared/list-params.ts";
@@ -23,7 +24,7 @@ export async function routeAdminFinance(ctx: AdminRequestContext, payload: unkno
       }
       const { data: commission } = await adminClient
         .from("comissoes")
-        .select("id, indicacao_id, status")
+        .select("id, indicacao_id, status, valor, indicacoes(nome_indicado)")
         .eq("id", pl.comissaoId)
         .maybeSingle();
       const { error } = await adminClient.from("comissoes").update(patch).eq("id", pl.comissaoId);
@@ -46,6 +47,29 @@ export async function routeAdminFinance(ctx: AdminRequestContext, payload: unkno
           },
         })),
       );
+      if (pl.status === "pago") {
+        const indRow = commission as {
+          valor?: number | null;
+          indicacoes?: { nome_indicado?: string | null } | null;
+        } | null;
+        const nome = indRow?.indicacoes?.nome_indicado?.trim() || "Indicado";
+        const valorNum = Number(indRow?.valor ?? 0);
+        const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valorNum);
+        void notifyAdminsPush(adminClient, {
+          title: "💰 Comissão paga",
+          body: `${nome} — ${brl}.`,
+          data: (() => {
+            const d: Record<string, string> = {
+              comissaoId: String(pl.comissaoId),
+              evento: "comissao_paga",
+            };
+            if (commission?.indicacao_id != null) {
+              d.indicacaoId = String(commission.indicacao_id);
+            }
+            return d;
+          })(),
+        });
+      }
       return jsonResponse(req, 200, { message: "Status da comissão atualizado." });
     }
     default:

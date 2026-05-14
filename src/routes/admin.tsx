@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { RequireAdmin } from "@/components/auth/RequireAdmin";
+import { PushNotificationsBar } from "@/components/push-notifications-bar";
 import { supabase } from "@/lib/supabase/client";
 import { formatBRL, formatDate } from "@/lib/format";
 import { makeUploadId } from "@/lib/upload-id";
@@ -1152,6 +1153,8 @@ function AdminRouteComponent() {
               </Button>
             </div>
           </header>
+
+          <PushNotificationsBar />
 
           <div className="px-6 lg:px-10 py-8 space-y-6 max-w-[1400px] mx-auto">
             {activeTab === "overview" && (

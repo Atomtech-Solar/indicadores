@@ -175,7 +175,7 @@ export function AdminNovaIndicacaoModal({
         if (f) paths[i] = await uploadIndicacaoComprovanteToUserFolder(indicadorSelecionado.usuario_id, f);
       }
 
-      const { error } = await supabase.from("indicacoes").insert({
+      const { data: inserted, error } = await supabase.from("indicacoes").insert({
         usuario_id: indicadorSelecionado.id,
         nome_indicado: nome,
         whatsapp,
@@ -186,10 +186,24 @@ export function AdminNovaIndicacaoModal({
         foto_padrao_url: paths[1],
         foto_extra_1_url: paths[2],
         foto_extra_2_url: paths[3],
-      });
+      }).select("id").single();
       if (error) throw error;
+      if (!inserted?.id) throw new Error("Falha ao obter ID da indicação.");
+      return inserted.id as number;
     },
-    onSuccess: async () => {
+    onSuccess: async (indicacaoId) => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        const { error: pushErr } = await supabase.functions.invoke("send-push", {
+          body: { indicacaoId },
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (pushErr) {
+          console.warn("[push] send-push (admin nova indicação):", pushErr.message);
+        }
+      }
       await queryClient.invalidateQueries({ queryKey: ["admin-fotos"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes-elegiveis"] });

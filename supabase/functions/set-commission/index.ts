@@ -3,6 +3,7 @@ import { buildCorsHeaders } from "../_shared/cors.ts";
 import { getSupabaseEdgeEnv } from "../_shared/env.ts";
 import { ensureAdmin, getRequesterUserId, getUserByAuthId } from "../_shared/auth-admin.ts";
 import { jsonResponse } from "../_shared/http.ts";
+import { notifyAdminsPush } from "../_shared/push-fcm.ts";
 
 type SetCommissionPayload = {
   indicacaoId: number;
@@ -128,6 +129,15 @@ async function upsertCommissionByIndicacao(
   });
   const { error: notifError } = await adminClient.from("notificacoes").insert(adminNotifs);
   if (notifError) throw new Error("NOTIFICATION_FAILED");
+
+  void notifyAdminsPush(adminClient, {
+    title: "📄 Proposta registrada",
+    body: `Nova proposta para ${indicacao.nome_indicado}.`,
+    data: {
+      indicacaoId: String(indicacao.id),
+      evento: "proposta_registrada",
+    },
+  });
 }
 
 Deno.serve(async (req: Request) => {

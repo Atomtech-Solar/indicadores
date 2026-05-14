@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { notifyAdminsPush } from "../_shared/push-fcm.ts";
 
 type RegisterPayload = {
   email: string;
@@ -183,9 +184,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     let userId: string;
+    let resumedRegistration = false;
     try {
       const result = await registerOrResumePendingUser(supabase, { email, password, nome, whatsapp });
       userId = result.userId;
+      resumedRegistration = result.resumed;
       if (result.resumed) {
         console.log(
           JSON.stringify({
@@ -205,6 +208,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     await upsertUsuarioProfile(supabase, { userId, nome, whatsapp });
+
+    if (!resumedRegistration) {
+      void notifyAdminsPush(supabase, {
+        title: "👤 Novo indicador cadastrado",
+        body: `${nome} criou uma conta.`,
+        data: { evento: "novo_indicador", userId },
+      });
+    }
 
     return jsonResponse(200, { message: "Cadastro realizado com sucesso." });
   } catch (error) {

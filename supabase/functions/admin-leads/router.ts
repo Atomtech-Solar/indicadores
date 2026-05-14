@@ -1,4 +1,5 @@
 import { createNotifications } from "../_shared/notifications.ts";
+import { notifyAdminsPush } from "../_shared/push-fcm.ts";
 import { jsonResponse } from "../_shared/http.ts";
 import { parsePositiveInt } from "../_shared/admin-parse.ts";
 import type { AdminRequestContext } from "../_shared/admin-runtime.ts";
@@ -54,6 +55,21 @@ export async function routeAdminLeads(ctx: AdminRequestContext, payload: unknown
           },
         })),
       );
+      const pushStatuses = new Set(["negociacao", "fechado", "perdido"]);
+      if (pushStatuses.has(pl.status)) {
+        const nome = indicacaoBefore?.nome_indicado ?? "Indicação";
+        const statusPt =
+          pl.status === "negociacao" ? "negociação" : pl.status === "fechado" ? "fechado" : "perdido";
+        void notifyAdminsPush(adminClient, {
+          title: "📈 Status da indicação atualizado",
+          body: `${nome} agora está em ${statusPt}.`,
+          data: {
+            indicacaoId: String(pl.indicacaoId),
+            evento: "status_indicacao",
+            status: pl.status,
+          },
+        });
+      }
       return jsonResponse(req, 200, { message: "Status da indicação atualizado." });
     }
     case "list_project_comments": {
