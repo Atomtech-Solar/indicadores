@@ -1,5 +1,5 @@
 import { createNotifications } from "../_shared/notifications.ts";
-import { notifyAdminsPush } from "../_shared/push-fcm.ts";
+import { notifyAdminPushEvent } from "../_shared/push-fcm.ts";
 import { jsonResponse } from "../_shared/http.ts";
 import type { AdminRequestContext } from "../_shared/admin-runtime.ts";
 import type { ListParams } from "../_shared/list-params.ts";
@@ -55,19 +55,11 @@ export async function routeAdminFinance(ctx: AdminRequestContext, payload: unkno
         const nome = indRow?.indicacoes?.nome_indicado?.trim() || "Indicado";
         const valorNum = Number(indRow?.valor ?? 0);
         const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valorNum);
-        void notifyAdminsPush(adminClient, {
-          title: "💰 Comissão paga",
-          body: `${nome} — ${brl}.`,
-          data: (() => {
-            const d: Record<string, string> = {
-              comissaoId: String(pl.comissaoId),
-              evento: "comissao_paga",
-            };
-            if (commission?.indicacao_id != null) {
-              d.indicacaoId = String(commission.indicacao_id);
-            }
-            return d;
-          })(),
+        void notifyAdminPushEvent(adminClient, "comissao_paga", {
+          nomeIndicado: nome,
+          valorBrl: brl,
+          comissaoId: pl.comissaoId,
+          indicacaoId: commission?.indicacao_id ?? undefined,
         });
       }
       return jsonResponse(req, 200, { message: "Status da comissão atualizado." });

@@ -68,6 +68,16 @@ export async function getFcmAccessToken(env: FcmEnv): Promise<string> {
 
 export type FcmSendResult = "ok" | "invalid_token" | "error";
 
+export type FcmWebpushOptions = {
+  notification?: {
+    icon?: string;
+    badge?: string;
+    tag?: string;
+    requireInteraction?: boolean;
+  };
+  fcm_options?: { link?: string };
+};
+
 export async function sendFcmNotification(
   env: FcmEnv,
   accessToken: string,
@@ -75,6 +85,7 @@ export async function sendFcmNotification(
   title: string,
   body: string,
   data?: Record<string, string>,
+  webpush?: FcmWebpushOptions,
 ): Promise<FcmSendResult> {
   const url = `https://fcm.googleapis.com/v1/projects/${env.projectId}/messages:send`;
   const dataPayload = data
@@ -92,6 +103,7 @@ export async function sendFcmNotification(
         token,
         notification: { title, body },
         ...(dataPayload && Object.keys(dataPayload).length ? { data: dataPayload } : {}),
+        ...(webpush ? { webpush } : {}),
       },
     }),
   });

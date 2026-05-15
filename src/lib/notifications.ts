@@ -1,5 +1,5 @@
 import { getToken } from 'firebase/messaging';
-import { getFirebaseMessaging } from './firebase';
+import { resolveFirebaseMessaging } from './firebase';
 
 export async function requestNotificationPermission() {
   console.log("[push] requestNotificationPermission: início", {
@@ -21,11 +21,14 @@ export async function requestNotificationPermission() {
     throw new Error('Permissão de notificações negada.');
   }
 
-  const messaging = await getFirebaseMessaging();
+  const messagingResult = await resolveFirebaseMessaging();
 
-  if (!messaging) {
-    throw new Error('Push notifications não são suportadas neste navegador.');
+  if (!messagingResult.ok) {
+    console.warn('[push] FCM indisponível:', messagingResult.reason);
+    throw new Error(messagingResult.reason);
   }
+
+  const messaging = messagingResult.messaging;
 
   console.log('[push] Registrando Service Worker');
   const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
@@ -62,4 +65,26 @@ export async function requestNotificationPermission() {
   console.log('Token retornado:', token);
 
   return token;
+}
+
+let foregroundListenerAttached = false;
+
+/** Quando o admin está com o separador aberto, exibe o mesmo conteúdo do push na UI. */
+export async function attachForegroundPushListener(
+  onNotify: (payload: { title: string; body: string; accentColor?: string }) => void,
+): Promise<void> {
+  if (foregroundListenerAttached || typeof window === "undefined") return;
+
+  const messagingResult = await resolveFirebaseMessaging();
+  if (!messagingResult.ok) return;
+
+  const { onMessage } = await import("firebase/messaging");
+  onMessage(messagingResult.messaging, (payload) => {
+    const title = payload.notification?.title ?? "ATOM TECH";
+    const body = payload.notification?.body ?? "";
+    const accentColor =
+      typeof payload.data?.accentColor === "string" ? payload.data.accentColor : undefined;
+    onNotify({ title, body, accentColor });
+  });
+  foregroundListenerAttached = true;
 }

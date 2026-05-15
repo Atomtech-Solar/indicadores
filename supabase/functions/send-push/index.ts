@@ -3,7 +3,7 @@ import { buildCorsHeaders } from "../_shared/cors.ts";
 import { getSupabaseEdgeEnv } from "../_shared/env.ts";
 import { getRequesterUserId } from "../_shared/auth-admin.ts";
 import { jsonResponse } from "../_shared/http.ts";
-import { notifyAdminsPush } from "../_shared/push-fcm.ts";
+import { notifyAdminPushEvent } from "../_shared/push-fcm.ts";
 
 /**
  * Dispara push "Nova indicação" para administradores após criação no cliente (indicador ou admin).
@@ -57,10 +57,9 @@ Deno.serve(async (req: Request) => {
       return jsonResponse(req, 403, { error: "forbidden" });
     }
 
-    await notifyAdminsPush(adminClient, {
-      title: "🔔 Nova indicação recebida",
-      body: `${ind.nome_indicado} foi cadastrado.`,
-      data: { indicacaoId: String(ind.id), evento: "nova_indicacao" },
+    await notifyAdminPushEvent(adminClient, "nova_indicacao", {
+      nomeIndicado: ind.nome_indicado,
+      indicacaoId: ind.id,
     });
 
     return jsonResponse(req, 200, { ok: true });

@@ -1,7 +1,13 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getFcmAccessToken, readFcmEnv, sendFcmNotification } from "../lib/firebase-fcm.ts";
+import {
+  buildAdminPushMessage,
+  vibratePatternForEvent,
+  type AdminPushParams,
+  type PushEventType,
+} from "./push-templates.ts";
 
-/** Lista `auth.users.id` (uuid) de todos os administradores. O projeto não tem `company_id`; inclui todos os admins. */
+/** Lista `auth.users.id` (uuid) de todos os administradores. */
 export async function listAdminAuthUserIds(adminClient: SupabaseClient): Promise<string[]> {
   const { data, error } = await adminClient.from("usuarios").select("usuario_id").eq("role", "admin");
   if (error) throw error;
@@ -20,16 +26,13 @@ async function deletePushToken(adminClient: SupabaseClient, token: string): Prom
   }
 }
 
-/**
- * Envia push FCM para os `userIds` (auth uuid) informados: busca tokens em `push_tokens`,
- * envia um a um, remove tokens inválidos. Erros não propagam.
- */
 export async function sendPushToAuthUserIds(
   adminClient: SupabaseClient,
   userIds: string[],
   title: string,
   body: string,
   data?: Record<string, string>,
+  webpush?: Parameters<typeof sendFcmNotification>[6],
 ): Promise<void> {
   const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
   if (!uniqueUserIds.length) {
@@ -67,9 +70,9 @@ export async function sendPushToAuthUserIds(
 
   for (const token of tokens) {
     try {
-      const result = await sendFcmNotification(env, accessToken, token, title, body, data);
+      const result = await sendFcmNotification(env, accessToken, token, title, body, data, webpush);
       if (result === "ok") {
-        console.log(JSON.stringify({ type: "push_send_ok", tokenSuffix: token.slice(-8) }));
+        console.log(JSON.stringify({ type: "push_send_ok", tokenSuffix: token.slice(-8), evento: data?.evento ?? null }));
       } else if (result === "invalid_token") {
         await deletePushToken(adminClient, token);
       }
@@ -79,7 +82,30 @@ export async function sendPushToAuthUserIds(
   }
 }
 
-/** Envia push a todos os administradores (tokens em `push_tokens`). */
+/** Push com identidade visual ATOM TECH por tipo de evento. */
+export async function notifyAdminPushEvent(
+  adminClient: SupabaseClient,
+  event: PushEventType,
+  params: AdminPushParams,
+): Promise<void> {
+  try {
+    const built = buildAdminPushMessage(event, params);
+    built.data.vibrate = vibratePatternForEvent(event, params.status).join(",");
+    const adminIds = await listAdminAuthUserIds(adminClient);
+    await sendPushToAuthUserIds(
+      adminClient,
+      adminIds,
+      built.title,
+      built.body,
+      built.data,
+      built.webpush,
+    );
+  } catch (e) {
+    console.error(JSON.stringify({ type: "notify_admin_push_event_failed", message: String(e) }));
+  }
+}
+
+/** Compatibilidade: envio manual título/corpo (preferir notifyAdminPushEvent). */
 export async function notifyAdminsPush(
   adminClient: SupabaseClient,
   input: { title: string; body: string; data?: Record<string, string> },

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { savePushToken } from "@/lib/push-tokens";
+import { SITE_LOGO_URL } from "@/lib/site-logo";
 
 function isPushServiceUnavailableError(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error);
@@ -24,6 +26,16 @@ function logPushSetupError(error: unknown) {
     console.warn(message);
     return;
   }
+  if (
+    message.includes("VITE_FIREBASE") ||
+    message.includes("Configuração Firebase") ||
+    message.includes("HTTPS") ||
+    message.includes("PushManager") ||
+    message.includes("não é suportado")
+  ) {
+    console.warn("[push]", message);
+    return;
+  }
 
   console.error("[push] Erro ao configurar notificações:", error);
 }
@@ -40,6 +52,29 @@ export function PushNotificationsBar() {
   const [insecureBannerDismissed, setInsecureBannerDismissed] = useState(false);
   const [showPushEnableBanner, setShowPushEnableBanner] = useState(false);
   const registerInFlightRef = useRef(false);
+  const foregroundAttachedRef = useRef(false);
+
+  const attachForeground = useCallback(async () => {
+    if (foregroundAttachedRef.current) return;
+    const { attachForegroundPushListener } = await import("@/lib/notifications");
+    await attachForegroundPushListener(({ title, body, accentColor }) => {
+      toast(title, {
+        description: body,
+        duration: 8000,
+        style: {
+          borderLeft: `4px solid ${accentColor ?? "#1B8F3A"}`,
+        },
+        icon: (
+          <img
+            src={SITE_LOGO_URL}
+            alt=""
+            className="h-8 w-8 rounded-md object-contain shrink-0"
+          />
+        ),
+      });
+    });
+    foregroundAttachedRef.current = true;
+  }, []);
 
   const registerPushNotifications = useCallback(async () => {
     if (registerInFlightRef.current) {
@@ -53,13 +88,14 @@ export function PushNotificationsBar() {
       console.log("Token retornado:", token);
       console.log("FCM Token:", token);
       await savePushToken(token);
+      await attachForeground();
       setShowPushEnableBanner(false);
     } catch (error) {
       logPushSetupError(error);
     } finally {
       registerInFlightRef.current = false;
     }
-  }, []);
+  }, [attachForeground]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -92,6 +128,7 @@ export function PushNotificationsBar() {
         console.warn("[push] PushManager indisponível — FCM não será tentado.");
         return;
       }
+      void attachForeground();
       console.log("[push] permissão já granted — a chamar registerPushNotifications()");
       void registerPushNotifications();
       return;
@@ -99,7 +136,7 @@ export function PushNotificationsBar() {
 
     console.log('[push] permissão "default" — mostrar botão "Permitir notificações"');
     setShowPushEnableBanner(true);
-  }, [registerPushNotifications]);
+  }, [registerPushNotifications, attachForeground]);
 
   return (
     <>
