@@ -39,6 +39,8 @@ import { fetchUsuarioRow } from "@/lib/usuario-profile";
 import type { Tables } from "@/lib/supabase/database.types";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { IndicacaoLgpdConsentField, IndicacaoPrivacyModal } from "@/components/indicacao-lgpd-consent";
+import { TutorialEvChargerReading } from "@/components/tutorial-ev-charger-reading";
+import { TutorialSolarReading } from "@/components/tutorial-solar-reading";
 
 const DASHBOARD_SIDEBAR_LOGO_URL = "https://i.ibb.co/kgsNzg3v/Documento-de-Bryan-Henrique.png";
 
@@ -1601,40 +1603,37 @@ function Dashboard() {
               </div>
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-                  <h4 className="text-base font-semibold text-zinc-900">Painel solar</h4>
+                  <h4 className="text-base font-semibold text-zinc-900">Como Vender Energia Solar</h4>
                   <div className="mt-3 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100">
-                    <iframe
-                      className="aspect-video w-full"
-                      src="https://www.youtube.com/embed/_W1nQT7az8c"
-                      title="Tutorial de oferta de painel solar"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                      referrerPolicy="strict-origin-when-cross-origin"
-                      allowFullScreen
-                    />
+                    <video
+                      controls
+                      preload="metadata"
+                      playsInline
+                      className="aspect-video w-full rounded-xl"
+                      aria-label="Como Vender Energia Solar"
+                    >
+                      <source src="/videos/Usina-Solar.mp4" type="video/mp4" />
+                      Seu navegador não suporta vídeos.
+                    </video>
                   </div>
-                  <p className="mt-2 text-sm text-zinc-600">
-                    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Integer viverra, nisl ac
-                    ultrices feugiat, mauris massa sollicitudin nunc, sed volutpat risus nibh id ante.
-                  </p>
+                  <TutorialSolarReading />
                 </div>
 
                 <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
-                  <h4 className="text-base font-semibold text-zinc-900">Carregador veicular</h4>
+                  <h4 className="text-base font-semibold text-zinc-900">Como vender Carregador veicular</h4>
                   <div className="mt-3 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100">
-                    <iframe
-                      className="aspect-video w-full"
-                      src="https://www.youtube.com/embed/GgX02LzY240"
-                      title="Tutorial de oferta de carregador veicular"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                      referrerPolicy="strict-origin-when-cross-origin"
-                      allowFullScreen
-                    />
+                    <video
+                      controls
+                      preload="metadata"
+                      playsInline
+                      className="aspect-video w-full rounded-xl"
+                      aria-label="Como vender Carregador veicular"
+                    >
+                      <source src="/videos/Carregador-veicular.mp4" type="video/mp4" />
+                      Seu navegador não suporta vídeos.
+                    </video>
                   </div>
-                  <p className="mt-2 text-sm text-zinc-600">
-                    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Fusce ullamcorper orci et
-                    nibh tincidunt, sit amet efficitur sem suscipit. Curabitur hendrerit magna at
-                    placerat blandit.
-                  </p>
+                  <TutorialEvChargerReading />
                 </div>
               </div>
             </div>
