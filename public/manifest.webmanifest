@@ -1,0 +1,25 @@
+{
+  "name": "ATOM TECH Indicadores",
+  "short_name": "ATOM TECH",
+  "description": "Painel de indicações e administração ATOM TECH",
+  "start_url": "/admin",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1B8F3A",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "https://i.ibb.co/nqCbqzLG/Documento-de-Bryan-Henrique-1.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "https://i.ibb.co/nqCbqzLG/Documento-de-Bryan-Henrique-1.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
