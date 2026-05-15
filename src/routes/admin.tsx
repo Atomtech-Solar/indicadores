@@ -25,6 +25,7 @@ import {
   MessageSquareText,
   ImagePlus,
   FileText,
+  Contact,
 } from "lucide-react";
 import { toast } from "sonner";
 import { RequireAdmin } from "@/components/auth/RequireAdmin";
@@ -226,7 +227,9 @@ function CommentDocumentAttachments({ paths }: { paths: string[] }) {
 function AdminRouteComponent() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<"overview" | "usuarios" | "comissoes" | "fotos" | "mensagens" | "analytics" | "configuracoes">("overview");
+  const [activeTab, setActiveTab] = useState<
+    "overview" | "indicadores" | "indicado" | "comissoes" | "fotos" | "mensagens" | "analytics" | "configuracoes"
+  >("overview");
   const [commissionModal, setCommissionModal] = useState<CommissionModalState | null>(null);
   const [commissionValue, setCommissionValue] = useState("");
   const [projetoValue, setProjetoValue] = useState("");
@@ -238,8 +241,10 @@ function AdminRouteComponent() {
   const [comissoesDefinicaoPage, setComissoesDefinicaoPage] = useState(1);
   const [comissoesHistoricoSearch, setComissoesHistoricoSearch] = useState("");
   const [comissoesHistoricoPage, setComissoesHistoricoPage] = useState(1);
-  const [usuariosSearch, setUsuariosSearch] = useState("");
-  const [usuariosPage, setUsuariosPage] = useState(1);
+  const [indicadoresSearch, setIndicadoresSearch] = useState("");
+  const [indicadoresPage, setIndicadoresPage] = useState(1);
+  const [indicadosSearch, setIndicadosSearch] = useState("");
+  const [indicadosPage, setIndicadosPage] = useState(1);
   const [actionUserModal, setActionUserModal] = useState<{
     usuario_id: string;
     nome: string;
@@ -288,11 +293,13 @@ function AdminRouteComponent() {
     message: string;
   } | null>(null);
   const shouldLoadOverview = activeTab === "overview";
-  const shouldLoadUsuarios = activeTab === "usuarios";
+  const shouldLoadIndicadores = activeTab === "indicadores";
+  const shouldLoadIndicados = activeTab === "indicado";
   const shouldLoadFotos = activeTab === "fotos";
   const shouldLoadComissoes = activeTab === "comissoes";
   const shouldLoadAnalytics = activeTab === "analytics";
-  const usuariosSearchDebounced = useDebouncedValue(usuariosSearch, 500);
+  const indicadoresSearchDebounced = useDebouncedValue(indicadoresSearch, 500);
+  const indicadosSearchDebounced = useDebouncedValue(indicadosSearch, 500);
   const fotosSearchDebounced = useDebouncedValue(fotosSearch, 500);
   const comissoesDefinicaoSearchDebounced = useDebouncedValue(comissoesDefinicaoSearch, 500);
   const comissoesHistoricoSearchDebounced = useDebouncedValue(comissoesHistoricoSearch, 500);
@@ -492,9 +499,9 @@ function AdminRouteComponent() {
     },
   });
 
-  const { data: usuariosResp, isLoading: loadingUsuarios } = useQuery({
-    queryKey: ["admin-usuarios", usuariosPage, usuariosSearchDebounced],
-    enabled: shouldLoadUsuarios,
+  const { data: indicadoresResp, isLoading: loadingIndicadores } = useQuery({
+    queryKey: ["admin-indicadores", indicadoresPage, indicadoresSearchDebounced],
+    enabled: shouldLoadIndicadores,
     retry: false,
     refetchOnWindowFocus: false,
     placeholderData: keepPreviousData,
@@ -513,7 +520,39 @@ function AdminRouteComponent() {
         total: number;
         page: number;
         limit: number;
-      }>({ action: "list_users", page: usuariosPage, limit: PAGE_SIZE, search: usuariosSearchDebounced }),
+      }>({ action: "list_users", page: indicadoresPage, limit: PAGE_SIZE, search: indicadoresSearchDebounced }),
+  });
+
+  const { data: indicadosResp, isLoading: loadingIndicados } = useQuery({
+    queryKey: ["admin-indicados", indicadosPage, indicadosSearchDebounced],
+    enabled: shouldLoadIndicados,
+    retry: false,
+    refetchOnWindowFocus: false,
+    placeholderData: keepPreviousData,
+    queryFn: () =>
+      callAdminOps<{
+        items: {
+          id: number;
+          usuario_id: number;
+          usuario_nome: string;
+          nome_indicado: string;
+          whatsapp: string | null;
+          tipo: string;
+          status: string;
+          valor_potencial: number | null;
+          valor_projeto: number | null;
+          created_at: string;
+          updated_at: string;
+        }[];
+        total: number;
+        page: number;
+        limit: number;
+      }>({
+        action: "list_indicacoes",
+        page: indicadosPage,
+        limit: PAGE_SIZE,
+        search: indicadosSearchDebounced,
+      }),
   });
 
   const { data: fotosResp, isLoading: loadingFotos } = useQuery({
@@ -584,6 +623,7 @@ function AdminRouteComponent() {
           usuario_id: number;
           usuario_nome: string;
           nome_indicado: string;
+          whatsapp: string | null;
           tipo: string;
           status: "enviado" | "analise" | "negociacao" | "fechado" | "perdido";
           valor_potencial: number | null;
@@ -603,12 +643,14 @@ function AdminRouteComponent() {
       }),
   });
 
-  const usuarios = usuariosResp?.items ?? [];
+  const indicadores = indicadoresResp?.items ?? [];
+  const indicados = indicadosResp?.items ?? [];
   const fotos = fotosResp?.items ?? [];
   const comissoes = comissoesResp?.items ?? [];
   const indicacoesElegiveisComissaoPaginadas = indicacoesElegiveisResp?.items ?? [];
   const comissoesHistoricoPaginadas = comissoes;
-  const usuariosTotalPages = Math.max(1, Math.ceil((usuariosResp?.total ?? 0) / PAGE_SIZE));
+  const indicadoresTotalPages = Math.max(1, Math.ceil((indicadoresResp?.total ?? 0) / PAGE_SIZE));
+  const indicadosTotalPages = Math.max(1, Math.ceil((indicadosResp?.total ?? 0) / PAGE_SIZE));
   const fotosTotalPages = Math.max(1, Math.ceil((fotosResp?.total ?? 0) / PAGE_SIZE));
   const comissoesDefinicaoTotalPages = Math.max(1, Math.ceil((indicacoesElegiveisResp?.total ?? 0) / PAGE_SIZE));
   const comissoesHistoricoTotalPages = Math.max(1, Math.ceil((comissoesResp?.total ?? 0) / PAGE_SIZE));
@@ -655,7 +697,7 @@ function AdminRouteComponent() {
   const promoteMutation = useMutation({
     mutationFn: (userId: string) => callAdminOpsMutation({ action: "set_user_role", userId, role: "admin" }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-indicadores"] });
       if (shouldLoadOverview) {
         await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
       }
@@ -667,7 +709,7 @@ function AdminRouteComponent() {
   const revokeAdminMutation = useMutation({
     mutationFn: (userId: string) => callAdminOpsMutation({ action: "set_user_role", userId, role: "indicador" }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-indicadores"] });
       if (shouldLoadOverview) {
         await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
       }
@@ -680,7 +722,7 @@ function AdminRouteComponent() {
   const disableMutation = useMutation({
     mutationFn: (userId: string) => callAdminOpsMutation({ action: "disable_user", userId }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-indicadores"] });
       toast.success("Usuário desativado com sucesso.");
     },
     onError: () => toast.error("Não foi possível desativar o usuário."),
@@ -689,7 +731,7 @@ function AdminRouteComponent() {
   const reactivateMutation = useMutation({
     mutationFn: (userId: string) => callAdminOpsMutation({ action: "reactivate_user", userId }),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["admin-usuarios"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-indicadores"] });
       toast.success("Usuário reativado com sucesso.");
     },
     onError: () => toast.error("Não foi possível reativar o usuário."),
@@ -701,6 +743,7 @@ function AdminRouteComponent() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin-fotos"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-indicados"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
       if (shouldLoadOverview) {
         await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
@@ -715,6 +758,7 @@ function AdminRouteComponent() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin-fotos"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-indicados"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes-elegiveis"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-comissoes"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
@@ -819,6 +863,7 @@ function AdminRouteComponent() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin-fotos"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-comissoes"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-indicados"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
       if (shouldLoadOverview) {
         await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
@@ -850,6 +895,7 @@ function AdminRouteComponent() {
       await queryClient.invalidateQueries({ queryKey: ["admin-fotos"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-comissoes"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-indicacoes"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-indicados"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-analytics"] });
       if (shouldLoadOverview) {
         await queryClient.invalidateQueries({ queryKey: ["admin-overview"], exact: true });
@@ -875,7 +921,9 @@ function AdminRouteComponent() {
   const menuItems = useMemo(
     () => [
       { key: "overview", label: "Overview", icon: LayoutDashboard },
-      { key: "usuarios", label: "Usuários", icon: Users },
+      { key: "indicadores", label: "Indicadores", icon: Users },
+      { key: "indicado", label: "Indicado", icon: Contact },
+      { key: "comissoes", label: "Comissões", icon: Wallet },
       { key: "fotos", label: "Projetos", icon: ImageIcon },
       { key: "mensagens", label: "Central de Mensagens", icon: MessageSquareText },
       { key: "analytics", label: "Analytics", icon: BarChart3 },
@@ -920,6 +968,20 @@ function AdminRouteComponent() {
       label: "perdido",
       buttonClass: "border-red-300 text-red-700 hover:bg-red-50",
     };
+  };
+  const projetoStatusLabelParaExibicao = (
+    rawStatus: Parameters<typeof getProjetoStatusTheme>[0],
+  ) => {
+    const { label } = getProjetoStatusTheme(rawStatus);
+    const pt: Record<string, string> = {
+      recebido: "Recebido",
+      analise: "Em análise",
+      negociacao: "Em negociação",
+      fechado: "Fechado",
+      pago: "Pago",
+      perdido: "Perdido",
+    };
+    return pt[label] ?? label;
   };
   const getProjetoComissaoTheme = (projeto: {
     status: "enviado" | "recebido" | "analise" | "negociacao" | "fechado" | "perdido" | "pago" | null;
@@ -970,14 +1032,16 @@ function AdminRouteComponent() {
     return status;
   };
   useEffect(() => {
-    setUsuariosPage((p) => Math.min(p, usuariosTotalPages));
+    setIndicadoresPage((p) => Math.min(p, indicadoresTotalPages));
+    setIndicadosPage((p) => Math.min(p, indicadosTotalPages));
     setFotosPage((p) => Math.min(p, fotosTotalPages));
     setComissoesDefinicaoPage((p) => Math.min(p, comissoesDefinicaoTotalPages));
     setComissoesHistoricoPage((p) => Math.min(p, comissoesHistoricoTotalPages));
     setOverviewComissoesPage((p) => Math.min(p, overviewComissoesTotalPages));
     setOverviewPropostasNpPage((p) => Math.min(p, overviewPropostasNpTotalPages));
   }, [
-    usuariosTotalPages,
+    indicadoresTotalPages,
+    indicadosTotalPages,
     fotosTotalPages,
     comissoesDefinicaoTotalPages,
     comissoesHistoricoTotalPages,
@@ -1450,16 +1514,19 @@ function AdminRouteComponent() {
               </div>
             )}
 
-            {activeTab === "usuarios" && (
+            {activeTab === "indicadores" && (
               <section className="rounded-2xl border border-zinc-200 bg-white">
                 <div className="px-5 py-4 border-b border-zinc-200">
-                  <h3 className="text-lg font-semibold text-zinc-900">Usuários</h3>
+                  <h3 className="text-lg font-semibold text-zinc-900">Indicadores</h3>
+                  <p className="mt-1 text-sm text-zinc-600">
+                    Contas cadastradas na plataforma (indicadores e administradores).
+                  </p>
                   <div className="mt-3">
                     <Input
-                      value={usuariosSearch}
+                      value={indicadoresSearch}
                       onChange={(e) => {
-                        setUsuariosSearch(e.target.value);
-                        setUsuariosPage(1);
+                        setIndicadoresSearch(e.target.value);
+                        setIndicadoresPage(1);
                       }}
                       placeholder='Buscar por nome, e-mail, WhatsApp, role/status ou data (ex.: "admin", "desativado", "ativo", "12/04/2026")'
                       className="h-10"
@@ -1479,140 +1546,327 @@ function AdminRouteComponent() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-100">
-                      {loadingUsuarios && <tr><td colSpan={6} className="px-5 py-6 text-center text-zinc-500">Carregando usuários...</td></tr>}
-                      {!loadingUsuarios && usuarios.length === 0 && (
+                      {loadingIndicadores && (
                         <tr>
-                          <td colSpan={6} className="px-5 py-6 text-center text-zinc-500">Nenhum usuário encontrado para os filtros.</td>
+                          <td colSpan={6} className="px-5 py-6 text-center text-zinc-500">
+                            Carregando indicadores...
+                          </td>
                         </tr>
                       )}
-                      {usuarios.map((u) => {
-                        const waUserLink = whatsappHref(u.whatsapp);
-                        return (
-                        <tr key={u.usuario_id} className={u.is_disabled ? "bg-rose-50/70" : undefined}>
-                          <td className="px-5 py-3">{u.nome}</td>
-                          <td className="px-5 py-3">{u.email}</td>
-                          <td className="px-5 py-3">
-                            {waUserLink ? (
-                              <a
-                                href={waUserLink}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="font-medium text-emerald-700 hover:text-emerald-900 hover:underline"
-                              >
-                                {u.whatsapp}
-                              </a>
-                            ) : (
-                              u.whatsapp
-                            )}
-                          </td>
-                          <td className="px-5 py-3">
-                            <div className="flex items-center gap-2">
-                              <span>{u.role}</span>
-                              {u.is_disabled && (
-                                <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
-                                  desativado
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-5 py-3">{formatDate(u.created_at)}</td>
-                          <td className="px-5 py-3">
-                            <div className="flex justify-end">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setActionUserModal({
-                                    usuario_id: u.usuario_id,
-                                    nome: u.nome,
-                                    role: u.role,
-                                    is_disabled: u.is_disabled,
-                                  })
-                                }
-                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
-                                aria-label="Abrir ações do usuário"
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </button>
-                            </div>
+                      {!loadingIndicadores && indicadores.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="px-5 py-6 text-center text-zinc-500">
+                            Nenhum indicador encontrado para os filtros.
                           </td>
                         </tr>
+                      )}
+                      {indicadores.map((u) => {
+                        const waUserLink = whatsappHref(u.whatsapp);
+                        return (
+                          <tr key={u.usuario_id} className={u.is_disabled ? "bg-rose-50/70" : undefined}>
+                            <td className="px-5 py-3">{u.nome}</td>
+                            <td className="px-5 py-3">{u.email}</td>
+                            <td className="px-5 py-3">
+                              {waUserLink ? (
+                                <a
+                                  href={waUserLink}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-medium text-emerald-700 hover:text-emerald-900 hover:underline"
+                                >
+                                  {u.whatsapp}
+                                </a>
+                              ) : (
+                                u.whatsapp
+                              )}
+                            </td>
+                            <td className="px-5 py-3">
+                              <div className="flex items-center gap-2">
+                                <span>{u.role}</span>
+                                {u.is_disabled && (
+                                  <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                                    desativado
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-5 py-3">{formatDate(u.created_at)}</td>
+                            <td className="px-5 py-3">
+                              <div className="flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setActionUserModal({
+                                      usuario_id: u.usuario_id,
+                                      nome: u.nome,
+                                      role: u.role,
+                                      is_disabled: u.is_disabled,
+                                    })
+                                  }
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                                  aria-label="Abrir ações do usuário"
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
                         );
                       })}
                     </tbody>
                   </table>
                 </div>
                 <div className="hidden max-[700px]:grid gap-3 p-4">
-                  {loadingUsuarios && (
+                  {loadingIndicadores && (
                     <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
-                      Carregando usuários...
+                      Carregando indicadores...
                     </div>
                   )}
-                  {!loadingUsuarios && usuarios.length === 0 && (
+                  {!loadingIndicadores && indicadores.length === 0 && (
                     <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
-                      Nenhum usuário encontrado para os filtros.
+                      Nenhum indicador encontrado para os filtros.
                     </div>
                   )}
-                  {!loadingUsuarios &&
-                    usuarios.map((u) => {
+                  {!loadingIndicadores &&
+                    indicadores.map((u) => {
                       const waUserLinkMob = whatsappHref(u.whatsapp);
                       return (
-                      <div key={`mob-user-${u.usuario_id}`} className={`rounded-xl border p-4 ${u.is_disabled ? "border-rose-200 bg-rose-50/50" : "border-zinc-200 bg-white"}`}>
-                        <p className="text-sm font-semibold text-zinc-900">{u.nome}</p>
-                        <p className="mt-1 text-xs text-zinc-600">{u.email}</p>
-                        <div className="mt-2 space-y-1 text-sm text-zinc-700">
-                          <p>
-                            <span className="font-medium text-zinc-900">WhatsApp:</span>{" "}
-                            {waUserLinkMob ? (
-                              <a
-                                href={waUserLinkMob}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="font-medium text-emerald-700 hover:text-emerald-900 hover:underline"
-                              >
-                                {u.whatsapp}
-                              </a>
-                            ) : (
-                              u.whatsapp
-                            )}
-                          </p>
-                          <p>
-                            <span className="font-medium text-zinc-900">Role:</span> {u.role}
-                            {u.is_disabled && (
-                              <span className="ml-2 inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
-                                desativado
-                              </span>
-                            )}
-                          </p>
-                          <p><span className="font-medium text-zinc-900">Data:</span> {formatDate(u.created_at)}</p>
+                        <div
+                          key={`mob-user-${u.usuario_id}`}
+                          className={`rounded-xl border p-4 ${u.is_disabled ? "border-rose-200 bg-rose-50/50" : "border-zinc-200 bg-white"}`}
+                        >
+                          <p className="text-sm font-semibold text-zinc-900">{u.nome}</p>
+                          <p className="mt-1 text-xs text-zinc-600">{u.email}</p>
+                          <div className="mt-2 space-y-1 text-sm text-zinc-700">
+                            <p>
+                              <span className="font-medium text-zinc-900">WhatsApp:</span>{" "}
+                              {waUserLinkMob ? (
+                                <a
+                                  href={waUserLinkMob}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-medium text-emerald-700 hover:text-emerald-900 hover:underline"
+                                >
+                                  {u.whatsapp}
+                                </a>
+                              ) : (
+                                u.whatsapp
+                              )}
+                            </p>
+                            <p>
+                              <span className="font-medium text-zinc-900">Role:</span> {u.role}
+                              {u.is_disabled && (
+                                <span className="ml-2 inline-flex items-center rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700">
+                                  desativado
+                                </span>
+                              )}
+                            </p>
+                            <p>
+                              <span className="font-medium text-zinc-900">Data:</span> {formatDate(u.created_at)}
+                            </p>
+                          </div>
+                          <div className="mt-3 flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setActionUserModal({
+                                  usuario_id: u.usuario_id,
+                                  nome: u.nome,
+                                  role: u.role,
+                                  is_disabled: u.is_disabled,
+                                })
+                              }
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                              aria-label="Abrir ações do usuário"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+                          </div>
                         </div>
-                        <div className="mt-3 flex justify-end">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setActionUserModal({
-                                usuario_id: u.usuario_id,
-                                nome: u.nome,
-                                role: u.role,
-                                is_disabled: u.is_disabled,
-                              })
-                            }
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
-                            aria-label="Abrir ações do usuário"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </div>
                       );
                     })}
                 </div>
-                {(usuariosResp?.total ?? 0) > 0 && (
+                {(indicadoresResp?.total ?? 0) > 0 && (
                   <div className="flex items-center justify-between border-t border-zinc-200 px-5 py-3">
-                    <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => setUsuariosPage((p) => Math.max(1, p - 1))} disabled={usuariosPage === 1}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 px-3 text-xs"
+                      onClick={() => setIndicadoresPage((p) => Math.max(1, p - 1))}
+                      disabled={indicadoresPage === 1}
+                    >
                       Anterior
                     </Button>
-                    <p className="text-sm font-medium text-zinc-700">{usuariosPage}/{usuariosTotalPages}</p>
-                    <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => setUsuariosPage((p) => Math.min(usuariosTotalPages, p + 1))} disabled={usuariosPage === usuariosTotalPages}>
+                    <p className="text-sm font-medium text-zinc-700">
+                      {indicadoresPage}/{indicadoresTotalPages}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 px-3 text-xs"
+                      onClick={() => setIndicadoresPage((p) => Math.min(indicadoresTotalPages, p + 1))}
+                      disabled={indicadoresPage === indicadoresTotalPages}
+                    >
+                      Próxima
+                    </Button>
+                  </div>
+                )}
+              </section>
+            )}
+
+            {activeTab === "indicado" && (
+              <section className="rounded-2xl border border-zinc-200 bg-white">
+                <div className="px-5 py-4 border-b border-zinc-200">
+                  <h3 className="text-lg font-semibold text-zinc-900">Indicados</h3>
+                  <p className="mt-1 text-sm text-zinc-600">
+                    Pessoas indicadas pelos indicadores, com contato e status do projeto.
+                  </p>
+                  <div className="mt-3">
+                    <Input
+                      value={indicadosSearch}
+                      onChange={(e) => {
+                        setIndicadosSearch(e.target.value);
+                        setIndicadosPage(1);
+                      }}
+                      placeholder='Buscar por nome do indicado, WhatsApp, indicador, tipo ou status'
+                      className="h-10"
+                    />
+                  </div>
+                </div>
+                <div className="max-[780px]:hidden overflow-x-auto">
+                  <table className="w-full text-sm min-w-[780px]">
+                    <thead>
+                      <tr className="text-left border-b border-zinc-200">
+                        <th className="px-5 py-3">Indicado</th>
+                        <th className="px-5 py-3">WhatsApp</th>
+                        <th className="px-5 py-3">Indicador</th>
+                        <th className="px-5 py-3">Status do projeto</th>
+                        <th className="px-5 py-3">Cadastro</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100">
+                      {loadingIndicados && (
+                        <tr>
+                          <td colSpan={5} className="px-5 py-6 text-center text-zinc-500">
+                            Carregando indicados...
+                          </td>
+                        </tr>
+                      )}
+                      {!loadingIndicados && indicados.length === 0 && (
+                        <tr>
+                          <td colSpan={5} className="px-5 py-6 text-center text-zinc-500">
+                            Nenhuma indicação encontrada para os filtros.
+                          </td>
+                        </tr>
+                      )}
+                      {!loadingIndicados &&
+                        indicados.map((row) => {
+                          const wa = whatsappHref(row.whatsapp);
+                          const statusTheme = getProjetoStatusTheme(row.status);
+                          return (
+                            <tr key={row.id}>
+                              <td className="px-5 py-3 font-medium text-zinc-900">{row.nome_indicado}</td>
+                              <td className="px-5 py-3">
+                                {wa ? (
+                                  <a
+                                    href={wa}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="font-medium text-emerald-700 hover:text-emerald-900 hover:underline"
+                                  >
+                                    {row.whatsapp?.trim() || "—"}
+                                  </a>
+                                ) : (
+                                  <span className="text-zinc-700">{row.whatsapp?.trim() || "—"}</span>
+                                )}
+                              </td>
+                              <td className="px-5 py-3 text-zinc-800">{row.usuario_nome}</td>
+                              <td className="px-5 py-3">
+                                <span
+                                  className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${statusTheme.cardClass}`}
+                                >
+                                  {projetoStatusLabelParaExibicao(row.status)}
+                                </span>
+                              </td>
+                              <td className="px-5 py-3 text-zinc-600">{formatDate(row.created_at)}</td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="hidden max-[780px]:grid gap-3 p-4">
+                  {loadingIndicados && (
+                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+                      Carregando indicados...
+                    </div>
+                  )}
+                  {!loadingIndicados && indicados.length === 0 && (
+                    <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 text-sm text-zinc-500">
+                      Nenhuma indicação encontrada para os filtros.
+                    </div>
+                  )}
+                  {!loadingIndicados &&
+                    indicados.map((row) => {
+                      const waMob = whatsappHref(row.whatsapp);
+                      const statusThemeMob = getProjetoStatusTheme(row.status);
+                      return (
+                        <div key={`mob-indicado-${row.id}`} className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
+                          <p className="text-sm font-semibold text-zinc-900">{row.nome_indicado}</p>
+                          <div className="mt-2 space-y-1.5 text-sm text-zinc-700">
+                            <p>
+                              <span className="font-medium text-zinc-900">WhatsApp:</span>{" "}
+                              {waMob ? (
+                                <a
+                                  href={waMob}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="font-medium text-emerald-700 hover:text-emerald-900 hover:underline"
+                                >
+                                  {row.whatsapp?.trim() || "—"}
+                                </a>
+                              ) : (
+                                row.whatsapp?.trim() || "—"
+                              )}
+                            </p>
+                            <p>
+                              <span className="font-medium text-zinc-900">Indicador:</span> {row.usuario_nome}
+                            </p>
+                            <p className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium text-zinc-900">Status:</span>
+                              <span
+                                className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-semibold ${statusThemeMob.cardClass}`}
+                              >
+                                {projetoStatusLabelParaExibicao(row.status)}
+                              </span>
+                            </p>
+                            <p className="text-xs text-zinc-500">Cadastro: {formatDate(row.created_at)}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+                {(indicadosResp?.total ?? 0) > 0 && (
+                  <div className="flex items-center justify-between border-t border-zinc-200 px-5 py-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 px-3 text-xs"
+                      onClick={() => setIndicadosPage((p) => Math.max(1, p - 1))}
+                      disabled={indicadosPage === 1}
+                    >
+                      Anterior
+                    </Button>
+                    <p className="text-sm font-medium text-zinc-700">
+                      {indicadosPage}/{indicadosTotalPages}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 px-3 text-xs"
+                      onClick={() => setIndicadosPage((p) => Math.min(indicadosTotalPages, p + 1))}
+                      disabled={indicadosPage === indicadosTotalPages}
+                    >
                       Próxima
                     </Button>
                   </div>

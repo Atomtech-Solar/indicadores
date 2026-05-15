@@ -14,7 +14,10 @@ export async function listIndicacoes(adminClient: SupabaseClient, params: ListPa
   const { page, limit, search, from, to } = normalizeListParams(params);
   let query = adminClient
     .from("indicacoes")
-    .select("id, usuario_id, nome_indicado, tipo, status, valor_potencial, valor_projeto, created_at, updated_at", { count: "exact" })
+    .select(
+      "id, usuario_id, nome_indicado, whatsapp, tipo, status, valor_potencial, valor_projeto, created_at, updated_at",
+      { count: "exact" },
+    )
     .order("created_at", { ascending: false });
 
   if (params.onlyCommissionEligible) {
@@ -22,7 +25,12 @@ export async function listIndicacoes(adminClient: SupabaseClient, params: ListPa
   }
   if (search) {
     const indicadorIds = await usuarioIdsByIndicadorNomeIlike(adminClient, search);
-    const orParts = [`nome_indicado.ilike.%${search}%`, `tipo.ilike.%${search}%`, `status.ilike.%${search}%`];
+    const orParts = [
+      `nome_indicado.ilike.%${search}%`,
+      `whatsapp.ilike.%${search}%`,
+      `tipo.ilike.%${search}%`,
+      `status.ilike.%${search}%`,
+    ];
     if (indicadorIds.length > 0) {
       orParts.push(`usuario_id.in.(${indicadorIds.join(",")})`);
     }
